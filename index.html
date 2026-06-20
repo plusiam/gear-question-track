@@ -34,7 +34,7 @@
     </div>
 
     <div class="teacher-row">
-      <button class="teacher-link" id="teacher-btn" type="button">🧑‍🏫 선생님 ▸ 새 활동(방) 만들기</button>
+      <a class="teacher-link" id="teacher-btn" href="./teacher.html">🧑‍🏫 선생님 ▸ 새 활동(방) 만들기</a>
     </div>
 
     <div class="home-notice" id="notice" hidden></div>
@@ -57,9 +57,7 @@
       }
       location.href = "./app.html?code=" + encodeURIComponent(code);
     });
-
-    document.getElementById("teacher-btn").addEventListener("click", () =>
-      showNotice("🔜 선생님 ‘방 만들기’(구글 로그인)는 곧 열려요. 지금은 학생이 ‘방 들어가기’에 수업 코드를 넣어 함께할 수 있어요."));
+    // 선생님 ▸ 새 활동(방) 만들기 = teacher.html(구글 로그인)로 이동 — 이제 링크라 별도 핸들러 불필요
   </script>
 </body>
 </html>
