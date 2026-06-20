@@ -118,6 +118,11 @@
             <label><input type="radio" name="t-mode" value="group" /> 모둠 — 모둠마다 장면·질문·실을 따로</label>
           </div>
         </div>
+        <div class="tc-field" id="groupcount-field" hidden>
+          <label for="t-groupcount">모둠 수</label>
+          <input id="t-groupcount" type="number" min="1" max="12" value="4" style="width:90px" />
+          <span class="tc-muted" style="font-size:.82em">학생이 들어오면 이 개수만큼 모둠을 골라요(1~12).</span>
+        </div>
         <div class="tc-field">
           <label for="t-title">책 제목</label>
           <input id="t-title" type="text" maxlength="80" placeholder="예: 연우의 도전" />
@@ -151,6 +156,10 @@
           <div class="tc-link-row">
             <button class="btn ghost" id="btn-copy-link" type="button">🔗 학생 링크 복사</button>
           </div>
+        </div>
+        <div id="w-grouplinks-wrap" hidden style="margin-bottom:12px">
+          <div class="tc-section-label">🔗 모둠별 바로가기 링크 (학생에게 나눠 주면 그 모둠으로 바로 들어가요)</div>
+          <div class="tc-link-row" id="w-grouplinks" style="justify-content:flex-start"></div>
         </div>
         <div class="tc-muted" id="w-scene" style="margin-bottom:10px"></div>
         <div class="tc-section-label">📊 우리 반 현황</div>
@@ -234,7 +243,7 @@
         const main = document.createElement("div"); main.className = "ts-main";
         const t = document.createElement("div"); t.className = "ts-title"; t.textContent = s.title || "(제목 없음)";
         const meta = document.createElement("div"); meta.className = "ts-meta";
-        meta.textContent = (s.mode === "group" ? "모둠" : "전체") + " · 코드 " + s.access_code + " · 질문 " + s.questions + (s.status === "closed" ? " · 닫힘" : "");
+        meta.textContent = (s.mode === "group" ? "모둠 " + (s.group_count || "?") + "개" : "전체") + " · 코드 " + s.access_code + " · 질문 " + s.questions + (s.status === "closed" ? " · 닫힘" : "");
         main.append(t, meta);
         const btn = document.createElement("button"); btn.className = "btn ghost"; btn.type = "button"; btn.textContent = "👁 관전";
         btn.addEventListener("click", () => startWatch(s.access_code));
@@ -244,13 +253,14 @@
 
     // 모드 전환 + 수업 만들기
     function selectedMode() { const r = document.querySelector('input[name="t-mode"]:checked'); return r ? r.value : "class"; }
-    document.querySelectorAll('input[name="t-mode"]').forEach(r =>
-      r.addEventListener("change", () => { $("scene-field").hidden = selectedMode() === "group"; }));
+    function syncModeFields() { const g = selectedMode() === "group"; $("scene-field").hidden = g; $("groupcount-field").hidden = !g; }
+    document.querySelectorAll('input[name="t-mode"]').forEach(r => r.addEventListener("change", syncModeFields));
     $("btn-create").addEventListener("click", async () => {
       const mode = selectedMode(), title = $("t-title").value.trim(), scene = mode === "group" ? "" : $("t-scene").value.trim();
+      const count = mode === "group" ? Math.max(1, Math.min(12, parseInt($("t-groupcount").value, 10) || 4)) : null;
       $("btn-create").disabled = true; $("create-msg").textContent = "여는 중…";
       try {
-        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: mode });
+        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: mode, p_group_count: count });
         if (error) throw error;
         $("create-msg").textContent = ""; $("t-title").value = ""; $("t-scene").value = "";
         startWatch(data.access_code);   // 만들면 바로 그 수업 관전으로
@@ -280,7 +290,7 @@
     function renderWatch(board) {
       const sess = board.session || {}, qs = board.questions || [];
       if (sess.mode === "group") { $("w-counts").hidden = true; $("w-list-wrap").hidden = true; renderGroupTiles(board); return; }
-      $("w-counts").hidden = false; $("w-list-wrap").hidden = false;
+      $("w-counts").hidden = false; $("w-list-wrap").hidden = false; $("w-grouplinks-wrap").hidden = true;
       $("w-scene").textContent = (sess.title ? "📖 " + sess.title + " — " : "") + (sess.scene || "(장면 미정 — 학생들이 함께 정해요)");
       const by = { fact: 0, infer: 0, imagine: 0, none: 0 };
       qs.forEach(q => { by[q.type || "none"]++; });
@@ -306,6 +316,19 @@
       qs.forEach(q => { if (q.group_no) set.add(q.group_no); });
       threads.forEach(t => { if (t.group_no) set.add(t.group_no); });
       const nums = [...set].sort((a, b) => a - b);
+      // 모둠별 바로가기 링크(교사가 정한 개수만큼) — 학생에게 나눠 주면 그 모둠으로 바로 입장(?g=)
+      const gcount = (sess.group_count) || (nums.length ? Math.max.apply(null, nums) : 4);
+      const gl = $("w-grouplinks"); gl.textContent = "";
+      for (let k = 1; k <= gcount; k++) {
+        const b = document.createElement("button"); b.className = "btn ghost"; b.type = "button"; b.textContent = k + "모둠 링크";
+        b.addEventListener("click", async () => {
+          const url = studentUrl(activeCode) + "&g=" + k;
+          try { await navigator.clipboard.writeText(url); b.textContent = "✓ " + k + "모둠"; setTimeout(() => b.textContent = k + "모둠 링크", 1200); }
+          catch (e) { prompt(k + "모둠 링크예요:", url); }
+        });
+        gl.appendChild(b);
+      }
+      $("w-grouplinks-wrap").hidden = false;
       const list = $("w-qlist"); list.className = "tc-grouptiles"; list.textContent = "";
       $("w-list-wrap").hidden = false;
       if (!nums.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 들어온 모둠이 없어요."; list.appendChild(n); return; }

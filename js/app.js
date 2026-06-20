@@ -538,13 +538,14 @@ function bridgeFocused() { const a = document.activeElement; return !!(a && a.cl
 function showGroupPicker() {
   const sec = document.getElementById("groupPicker"), grid = document.getElementById("gp-grid");
   if (!sec || !grid) return;
-  if (!grid.childElementCount) {
-    for (let n = 1; n <= 8; n++) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "gp-btn"; b.textContent = n + " 모둠";
-      b.addEventListener("click", () => pickGroup(n));
-      grid.appendChild(b);
-    }
+  // 교사가 정한 모둠 수만큼 버튼 생성(없으면 8 폴백)
+  const count = (lastBoard && lastBoard.session && lastBoard.session.group_count) || 8;
+  grid.textContent = "";
+  for (let n = 1; n <= count; n++) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "gp-btn"; b.textContent = n + " 모둠";
+    b.addEventListener("click", () => pickGroup(n));
+    grid.appendChild(b);
   }
   document.body.classList.add("picking-group");
   sec.hidden = false;
