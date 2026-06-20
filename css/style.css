@@ -172,6 +172,22 @@ h1, h2, h3 { margin: 0; }
   .toast { display: none !important; }
 }
 
+/* === 실시간 방 배너 + 읽기전용 장면 (수업 코드 모드) === */
+.room-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--imagine-bg); border: 1px solid #9fd9cf; border-radius: 12px;
+  padding: 9px 14px; margin-bottom: 12px; font-size: .92em; color: #155e54;
+}
+.room-bar .rb-code { letter-spacing: .12em; font-size: 1.05em; }
+.room-bar .rb-hint { color: var(--muted); font-weight: 400; }
+body.remote .scene-bar input[readonly], body.remote .scene-bar textarea[readonly] {
+  background: #f3f4f8; color: var(--muted); cursor: default;
+}
+.room-error {
+  max-width: 460px; margin: 14vh auto 0; text-align: center; display: grid; gap: 16px; justify-items: center;
+}
+.room-error p { font-size: 1.05em; color: var(--ink); }
+
 /* === 홈으로 돌아가기 링크 (앱 상단) === */
 .home-link { display: inline-block; margin-bottom: 10px; color: var(--muted); text-decoration: none; font-weight: 700; font-size: .9em; }
 .home-link:hover, .home-link:focus-visible { color: var(--ink); }
@@ -189,6 +205,15 @@ h1, h2, h3 { margin: 0; }
 .mode-card:hover, .mode-card:focus-visible { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,.1); outline: 3px solid #111; outline-offset: 2px; }
 .mode-card.live { border-color: var(--fact); }
 .mode-card.soon { opacity: .9; }
+.mode-card#card-room { border-color: var(--imagine); cursor: default; }
+.mode-card#card-room:hover, .mode-card#card-room:focus-within { transform: none; box-shadow: none; outline: none; }
+.room-join { display: flex; gap: 6px; margin-top: 10px; width: 100%; justify-content: center; flex-wrap: wrap; }
+.room-join input {
+  font: inherit; width: 140px; text-align: center; letter-spacing: .12em; text-transform: uppercase;
+  border: 2px solid var(--line); border-radius: 10px; padding: 8px 10px;
+  font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+}
+.room-join input:focus-visible { outline: 3px solid var(--imagine); outline-offset: 1px; }
 .mode-emoji { font-size: 2.4rem; }
 .mode-name { font-weight: 800; font-size: 1.15em; }
 .mode-desc { color: var(--muted); font-size: .9em; }

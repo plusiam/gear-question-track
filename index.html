@@ -21,11 +21,15 @@
         <div class="mode-name">혼자 해 보기</div>
         <div class="mode-desc">내 질문을 만들고 톱니로 이어 봐요</div>
       </a>
-      <div class="mode-card soon" id="card-room" role="button" tabindex="0" aria-label="방 들어가기 (실시간) — 공개수업 후 열려요">
+      <div class="mode-card" id="card-room">
         <div class="mode-emoji">🧩</div>
         <div class="mode-name">방 들어가기</div>
         <div class="mode-desc">친구들과 함께 (실시간)</div>
-        <div class="soon-tag">공개수업 후 열려요 🔜</div>
+        <form class="room-join" id="room-join">
+          <input id="room-code" type="text" inputmode="latin" autocapitalize="characters"
+                 autocomplete="off" maxlength="6" placeholder="수업 코드 6자" aria-label="수업 코드" />
+          <button class="btn" type="submit">들어가기</button>
+        </form>
       </div>
     </div>
 
@@ -38,15 +42,24 @@
 
   <script>
     "use strict";
-    // 1단계: 홈 + 라우팅. 개인 모드는 app.html로(지금 동작). 실시간 방은 백엔드(P2)가 켜진 뒤.
+    // 홈 + 라우팅. 혼자 해 보기=app.html(오프라인). 방 들어가기=수업 코드→app.html?code=. 선생님(방 만들기)은 구글 로그인(B) 전이라 안내만.
     const notice = document.getElementById("notice");
     function showNotice(msg) { notice.hidden = false; notice.textContent = msg; }
-    const roomCard = document.getElementById("card-room");
-    roomCard.addEventListener("click", () =>
-      showNotice("🔜 실시간 ‘방’(모둠·전체)은 공개수업 이후에 열려요. 지금은 ‘혼자 해 보기’로 바로 체험할 수 있어요."));
-    roomCard.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); roomCard.click(); } });
+
+    const codeInput = document.getElementById("room-code");
+    codeInput.addEventListener("input", () => { codeInput.value = codeInput.value.toUpperCase(); });
+    document.getElementById("room-join").addEventListener("submit", e => {
+      e.preventDefault();
+      const code = (codeInput.value || "").trim().toUpperCase();
+      if (!/^[A-Z2-9]{6}$/.test(code)) {
+        showNotice("수업 코드는 영문 대문자·숫자 6자예요. (예: ABCD23) 선생님께 코드를 확인해 주세요.");
+        codeInput.focus(); return;
+      }
+      location.href = "./app.html?code=" + encodeURIComponent(code);
+    });
+
     document.getElementById("teacher-btn").addEventListener("click", () =>
-      showNotice("🔜 실시간 모둠/전체 모드는 공개수업 이후 제공돼요. 그때 여기서 책 제목·장면을 입력해 방을 열 수 있어요."));
+      showNotice("🔜 선생님 ‘방 만들기’(구글 로그인)는 곧 열려요. 지금은 학생이 ‘방 들어가기’에 수업 코드를 넣어 함께할 수 있어요."));
   </script>
 </body>
 </html>

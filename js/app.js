@@ -17,6 +17,7 @@ function freshState() {
 }
 let S = freshState();
 let selectedId = null; // picking 상태(저장 안 함)
+let isDragging = false; // 드래그 중(폴링 클로버 가드용 — 저장 안 함)
 let appReady = false;  // 초기 렌더 끝나야 true — 복원된 완성 상태에서 로드 시 효과음 울리지 않게
 let soundOn = true;
 
@@ -26,6 +27,7 @@ const qById = id => S.questions.find(q => q.id === id);
 // ===== 저장 / 복원 — storage adapter 경유 (개인=Local·현행 / 공유=Supabase는 P2) =====
 // 모든 mutator는 save()만 부른다. 모드별 저장처는 adapter 한 곳에서 갈린다.
 const LocalAdapter = {
+  remote: false,
   load() {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -36,11 +38,12 @@ const LocalAdapter = {
     return null;
   },
   push(state) { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { /* 용량/프라이빗 모드 무시 */ } },
-  onRemoteChange() {},   // 개인 모드는 원격 변경 없음 (P2 SupabaseAdapter가 같은 인터페이스로 구현)
+  onRemoteChange() {},   // 개인 모드는 원격 변경 없음
   dispose() {}
 };
-let adapter = LocalAdapter;   // P2: 모드에 따라 SupabaseAdapter 주입
-function save() { adapter.push(S); }
+let adapter = LocalAdapter;   // 실시간(?code=)이면 startRemote에서 SupabaseAdapter로 교체
+// 실시간 모드는 서버 RPC가 저장을 맡으므로 로컬 push를 건너뛴다(단일 차단점 — 모든 로컬 mutator가 안전해짐)
+function save() { if (adapter.remote) return; adapter.push(S); }
 function loadSaved() { return adapter.load(); }
 const hasContent = st => st && (st.title || st.scene || (st.questions && st.questions.length));
 
@@ -61,20 +64,28 @@ function adoptState(o) {
 }
 
 // ===== 순수 mutator (각자 저장) =====
-function setTitle(v) { S.title = v; save(); }
-function setScene(v) { S.scene = v; save(); }
+// 실시간 모드에서 title·scene은 교사 소유(읽기 전용)
+function setTitle(v) { if (adapter.remote) return; S.title = v; save(); }
+function setScene(v) { if (adapter.remote) return; S.scene = v; save(); }
 function setPhase(p) { S.phase = p; save(); render(); }
 
-function addQuestion(text) {
+// 질문 입력 검증(빈/길이/중복) — 로컬·실시간 양쪽이 공유
+function qValidation(text) {
   const t = (text || "").trim();
   if (!t) return { ok: false, why: "empty" };
   if (t.length > MAXLEN) return { ok: false, why: "long" };
   if (S.questions.some(q => q.text === t)) return { ok: false, why: "dup" };
-  S.questions.push({ id: "q" + (++S.seq), text: t, type: null });
+  return { ok: true, t };
+}
+function addQuestion(text) {
+  const v = qValidation(text);
+  if (!v.ok) return v;
+  S.questions.push({ id: "q" + (++S.seq), text: v.t, type: null });
   save(); render();
   return { ok: true };
 }
 function deleteQuestion(id) {
+  if (adapter.remote) { if (selectedId === id) selectedId = null; adapter.deleteQuestion(id); return; }
   S.questions = S.questions.filter(q => q.id !== id);
   // 참조 무결성 ⒜ : 삭제된 질문을 참조하는 슬롯 비우기
   S.threads.forEach(th => TYPES.forEach(k => { if (th.slots[k] === id) th.slots[k] = null; }));
@@ -82,6 +93,7 @@ function deleteQuestion(id) {
   save(); render();
 }
 function setType(id, type) {
+  if (adapter.remote) { adapter.setType(id, type); return; }
   const q = qById(id); if (!q) return;
   q.type = type;
   // 참조 무결성 ⒝ : 이미 슬롯에 꽂힌 질문이 유형이 바뀌면 그 슬롯에서 뺀다(유형 불일치)
@@ -89,6 +101,7 @@ function setType(id, type) {
   save(); render();
 }
 function setSlot(type, id) {
+  if (adapter.remote) return; // ③ 잇기는 실시간(전체) 모드에 없음 — 방어
   const th = activeThread();
   if (id) {
     const q = qById(id);
@@ -99,8 +112,8 @@ function setSlot(type, id) {
   th.slots[type] = id;
   save(); render();
 }
-function setBridge(srcSlot, text) { activeThread().bridges[srcSlot] = text; save(); }
-function resetAll() { S = freshState(); selectedId = null; save(); syncInputs(); render(); }
+function setBridge(srcSlot, text) { if (adapter.remote) return; activeThread().bridges[srcSlot] = text; save(); }
+function resetAll() { if (adapter.remote) return; S = freshState(); selectedId = null; save(); syncInputs(); render(); }
 
 // JSON 결과 내보내기 / 불러오기 (학생 작성 결과 전체)
 function downloadJson() {
@@ -113,6 +126,7 @@ function downloadJson() {
   announce("결과를 파일(.json)로 저장했어요.");
 }
 function importJsonText(text) {
+  if (adapter.remote) { announce("실시간 방에서는 불러오기를 쓸 수 없어요."); return false; }
   let o; try { o = JSON.parse(text); } catch (e) { announce("불러올 수 없는 파일이에요."); return false; }
   if (!o || o.version !== 1 || !Array.isArray(o.questions)) { announce("이 도구의 결과 파일이 아니에요."); return false; }
   if (hasContent(S) && !confirm("지금 내용을 덮어쓰고 불러올까요?")) return false;
@@ -201,7 +215,8 @@ function renderCreate() {
     n.textContent = "아직 만든 질문이 없어요. 위에 적어서 추가해요.";
     list.appendChild(n); return;
   }
-  S.questions.forEach(q => list.appendChild(makeCard(q, { deletable: true })));
+  // 실시간(공유 발산) 모드에선 남의 질문 삭제 방지 — 삭제 버튼 숨김
+  S.questions.forEach(q => list.appendChild(makeCard(q, { deletable: !adapter.remote })));
 }
 
 function renderClassify() {
@@ -314,6 +329,8 @@ function clearSelect() {
   selectedId = null;
   document.querySelectorAll(".card.selected").forEach(el => el.classList.remove("selected"));
   document.querySelectorAll(".droppable, .over").forEach(z => z.classList.remove("droppable", "over"));
+  // idle 복귀 — 폴링 중 stash해 둔 보드가 있으면 지금 반영(클로버 가드)
+  if (adapter.remote && adapter.flush) adapter.flush();
 }
 function acceptable(zone, id) {
   // 분류 칸은 아무 카드나, 잇기 소켓은 유형 일치만
@@ -339,7 +356,7 @@ function bindPick(el, id, opts = {}) {
     if (pid === null) return;
     const dx = e.clientX - sx, dy = e.clientY - sy;
     if (!dragging && Math.hypot(dx, dy) > 8) {
-      dragging = true; moved = true; el.classList.add("dragging"); clearSelect();
+      dragging = true; isDragging = true; moved = true; el.classList.add("dragging"); clearSelect();
       document.querySelectorAll(".col, .socket").forEach(z => { if (acceptable(z, id)) z.classList.add("droppable"); });
     }
     if (dragging) { el.style.transform = `translate(${dx}px,${dy}px) scale(1.04)`; highlight(e.clientX, e.clientY, id); }
@@ -350,6 +367,7 @@ function bindPick(el, id, opts = {}) {
     pid = null;
     if (dragging) {
       el.classList.remove("dragging"); el.style.transform = "";
+      isDragging = false; // 드롭 직전 idle 처리 — placeInto→clearSelect의 flush가 stash 보드를 반영
       const z = zoneAt(e.clientX, e.clientY, id);
       document.querySelectorAll(".over").forEach(o => o.classList.remove("over"));
       if (z) placeInto(z, id); else clearSelect();
@@ -359,7 +377,7 @@ function bindPick(el, id, opts = {}) {
       else if (selectedId === id) clearSelect(); else selectCard(id);
     }
   });
-  el.addEventListener("pointercancel", () => { if (pid !== null) { try { el.releasePointerCapture(pid); } catch (x) {} } pid = null; el.classList.remove("dragging"); el.style.transform = ""; clearSelect(); });
+  el.addEventListener("pointercancel", () => { if (pid !== null) { try { el.releasePointerCapture(pid); } catch (x) {} } pid = null; isDragging = false; el.classList.remove("dragging"); el.style.transform = ""; clearSelect(); });
   el.addEventListener("keydown", e => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (opts.onTap) opts.onTap(); else if (selectedId === id) clearSelect(); else selectCard(id); }
     else if (e.key === "Escape") clearSelect();
@@ -400,11 +418,22 @@ const newq = document.getElementById("f-newq");
 const counter = document.getElementById("newq-counter");
 function updCounter() { const n = newq.value.length; counter.textContent = `${n} / ${MAXLEN}자`; counter.classList.toggle("warn", n >= MAXLEN); }
 newq.addEventListener("input", updCounter);
-function doAdd() {
+function announceVal(why) {
+  if (why === "empty") announce("질문을 적어 주세요.");
+  else if (why === "dup") announce("이미 있는 질문이에요.");
+  else if (why === "long") announce("질문이 너무 길어요.");
+}
+async function doAdd() {
+  if (adapter.remote) {
+    const v = qValidation(newq.value);                 // 로컬 선검증(빈/중복/길이) — 서버 왕복 절약
+    if (!v.ok) { announceVal(v.why); return; }
+    const r = await adapter.addQuestion(v.t);           // RPC → 폴링까지 마친 뒤 입력 비움(임시 id 없음)
+    if (r.ok) { newq.value = ""; updCounter(); newq.focus(); announce("질문을 추가했어요."); }
+    return;
+  }
   const r = addQuestion(newq.value);
   if (r.ok) { newq.value = ""; updCounter(); newq.focus(); announce("질문을 추가했어요."); }
-  else if (r.why === "empty") announce("질문을 적어 주세요.");
-  else if (r.why === "dup") announce("이미 있는 질문이에요.");
+  else announceVal(r.why);
 }
 document.getElementById("btn-add").addEventListener("click", doAdd);
 newq.addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doAdd(); } });
@@ -439,16 +468,76 @@ document.getElementById("btn-png").addEventListener("click", async () => {
   } catch (e) { announce("이미지 저장에 실패했어요. 인쇄를 이용해요."); }
 });
 
-// ===== 시작 (이어하기/새로 선택) =====
-const resumeBar = document.getElementById("resumeBar");
-const saved = loadSaved();
-if (hasContent(saved)) { adoptState(saved); resumeBar.classList.add("show"); /* 복원했음을 '보이게' */ }
-document.getElementById("btn-new").addEventListener("click", () => { resumeBar.classList.remove("show"); resetAll(); });
-document.getElementById("btn-keep").addEventListener("click", () => { resumeBar.classList.remove("show"); });
-syncInputs(); updCounter(); render(); appReady = true;
+// ===== 실시간(전체 모드) 투영·UI =====
+// 서버 보드(board())를 로컬 상태 S로 투영 — 항상 보드가 진실원천. 학생은 ①②(생성·분류)만, ③은 없음
+function applyBoard(board) {
+  const sess = (board && board.session) || {};
+  S.title = sess.title || "";
+  S.scene = sess.scene || "";
+  S.questions = (board && Array.isArray(board.questions) ? board.questions : [])
+    .map(q => ({ id: q.id, text: q.text, type: q.type || null }));
+  S.threads = [newThread("th1")];   // ③ 잇기는 전체 모드에 없음
+  S.activeThreadId = "th1";
+  if (S.phase === "connect") S.phase = "classify";
+}
+function configureRemoteUI(code) {
+  document.body.classList.add("remote");
+  const cbtn = document.querySelector('.stepper button[data-phase="connect"]');
+  if (cbtn) cbtn.style.display = "none";                          // ③ 잇기 숨김
+  ["btn-reset", "btn-import-json"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = "none"; });
+  const ft = document.getElementById("f-title"), fs = document.getElementById("f-scene");
+  ft.readOnly = true; fs.readOnly = true;                        // 장면은 교사 소유(읽기 전용)
+  const rb = document.getElementById("roomBar");
+  if (rb) { rb.hidden = false; const c = rb.querySelector(".rb-code"); if (c) c.textContent = code; }
+  if (S.phase === "connect") S.phase = "classify";
+}
+function showRoomError(msg) {
+  document.body.innerHTML = "";
+  const wrap = document.createElement("div"); wrap.className = "room-error";
+  const p = document.createElement("p"); p.textContent = msg;
+  const a = document.createElement("a"); a.href = "./index.html"; a.className = "btn ghost"; a.textContent = "← 홈으로";
+  wrap.append(p, a); document.body.appendChild(wrap);
+}
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = src;
+    s.onload = res; s.onerror = () => rej(new Error("로드 실패: " + src));
+    document.head.appendChild(s);
+  });
+}
 
-// 손글씨/둥근 웹폰트 미리 로드 (첫 PNG 내보내기에서 손글씨 누락 방지 — 실패해도 시스템 글꼴 폴백)
-if (document.fonts && document.fonts.load) { document.fonts.load('400 16px "Gaegu"'); document.fonts.load('400 16px "Jua"'); }
+// ===== 시작 — 수업 코드(?code=)면 실시간, 아니면 개인 모드(오프라인) =====
+function startLocal() {
+  const resumeBar = document.getElementById("resumeBar");
+  const saved = loadSaved();
+  if (hasContent(saved)) { adoptState(saved); resumeBar.classList.add("show"); /* 복원했음을 '보이게' */ }
+  document.getElementById("btn-new").addEventListener("click", () => { resumeBar.classList.remove("show"); resetAll(); });
+  document.getElementById("btn-keep").addEventListener("click", () => { resumeBar.classList.remove("show"); });
+  syncInputs(); updCounter(); render(); appReady = true;
+  // 손글씨/둥근 웹폰트 미리 로드 (첫 PNG 내보내기에서 손글씨 누락 방지 — 실패해도 시스템 글꼴 폴백)
+  if (document.fonts && document.fonts.load) { document.fonts.load('400 16px "Gaegu"'); document.fonts.load('400 16px "Jua"'); }
+}
+async function startRemote(code) {
+  try {
+    if (!window.supabase) await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
+    if (!window.GQT_CONFIG) await loadScript("./js/config.js");
+    await loadScript("./js/supabase-adapter.js");
+  } catch (e) { showRoomError("실시간 기능을 불러오지 못했어요. 인터넷 연결을 확인해 주세요."); return; }
+  configureRemoteUI(code);
+  const host = {
+    onBoard(board) { applyBoard(board); syncInputs(); render(); },
+    announce,
+    busy() { return isDragging || selectedId !== null; }
+  };
+  adapter = window.GQT_makeSupabaseAdapter({ code, config: window.GQT_CONFIG, host });
+  updCounter();
+  try { await adapter.init(); }
+  catch (e) { showRoomError("잘못되었거나 닫힌 수업 코드예요. 홈에서 코드를 다시 확인해 주세요."); return; }
+  appReady = true;
+}
+
+const ROOM = (window.GQT_ROOM_CODE || "").trim().toUpperCase();
+if (ROOM) startRemote(ROOM); else startLocal();
 
 // 테스트 훅 (상태 척추 검증용)
 window.GQT = { get S() { return S; }, addQuestion, deleteQuestion, setType, setSlot, setBridge, setTitle, setScene, setPhase, resetAll, save, loadSaved, serialize: () => JSON.stringify(S), importJsonText };

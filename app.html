@@ -16,6 +16,12 @@
 <body>
   <a href="./index.html" class="home-link">← 홈</a>
 
+  <!-- 실시간 방 배너 (수업 코드로 들어왔을 때만 표시) -->
+  <div class="room-bar" id="roomBar" hidden>
+    🧩 수업 방 · 코드 <b class="rb-code"></b>
+    <span class="rb-hint">— 선생님이 정한 장면으로 질문을 만들고 나눠요</span>
+  </div>
+
   <!-- 이어하기 배너 -->
   <div class="resume-bar" id="resumeBar">
     <span>💾 이전에 하던 내용을 불러왔어요.</span>
@@ -89,6 +95,11 @@
   <div class="sr-only" aria-live="polite" id="liveRegion"></div>
   <div class="toast" id="toast" role="status"></div>
 
+  <script>
+    "use strict";
+    // 수업 링크(?code=)면 실시간 모드 — app.js가 이 값을 보고 supabase·config·adapter를 그때만 로드(개인 모드는 오프라인)
+    window.GQT_ROOM_CODE = new URLSearchParams(location.search).get("code") || null;
+  </script>
   <script src="./js/app.js"></script>
 </body>
 </html>
