@@ -42,6 +42,11 @@
     .tc-session-row .ts-main { flex: 1; min-width: 160px; }
     .tc-session-row .ts-acts { display: flex; gap: 6px; flex-wrap: wrap; }
     .tc-session-row .ts-title { font-weight: 700; }
+    .ts-badge { font-size: .72em; font-weight: 800; padding: 2px 9px; border-radius: 999px; color: #fff; }
+    .ts-badge.cls { background: var(--fact); }
+    .ts-badge.grp { background: var(--imagine); }
+    .tc-group-label { font-weight: 800; font-size: .95em; color: var(--muted); margin: 16px 0 8px; }
+    .tc-group-label:first-child { margin-top: 2px; }
     .tc-session-row .ts-meta { color: var(--muted); font-size: .82em; }
 
     /* 관전(수업 상세) — 교사 모니터링임을 분명히 */
@@ -249,32 +254,49 @@
       catch (e) { box.textContent = "수업을 불러오지 못했어요."; return; }
       box.textContent = "";
       if (!list.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 만든 수업이 없어요. 위에서 새 수업을 열어요."; box.appendChild(n); return; }
-      list.forEach(s => {
-        const row = document.createElement("div"); row.className = "tc-session-row";
-        const main = document.createElement("div"); main.className = "ts-main";
-        const t = document.createElement("div"); t.className = "ts-title"; t.textContent = s.title || "(제목 없음)";
-        const meta = document.createElement("div"); meta.className = "ts-meta";
-        meta.textContent = (s.mode === "group" ? "모둠 " + (s.group_count || "?") + "개" : "전체") + " · 코드 " + s.access_code + " · 질문 " + s.questions + (s.status === "closed" ? " · 닫힘" : "");
-        main.append(t, meta);
-        const btn = document.createElement("button"); btn.className = "btn ghost"; btn.type = "button"; btn.textContent = "👁 관전";
-        btn.addEventListener("click", () => startWatch(s.access_code));
-        const toggle = document.createElement("button"); toggle.className = "btn ghost"; toggle.type = "button";
-        toggle.textContent = s.status === "closed" ? "열기" : "닫기";
-        toggle.addEventListener("click", async () => {
-          toggle.disabled = true;
-          try { const r = await db.rpc("set_session_status", { p_id: s.id, p_status: s.status === "closed" ? "open" : "closed" }); if (r.error) throw r.error; await loadMySessions(); }
-          catch (e) { toggle.disabled = false; showError("바꾸지 못했어요: " + (e.message || e)); }
-        });
-        const del = document.createElement("button"); del.className = "btn ghost"; del.type = "button"; del.textContent = "🗑 삭제"; del.style.color = "var(--infer)";
-        del.addEventListener("click", async () => {
-          if (!confirm("이 수업을 지울까요? 학생 질문·실까지 모두 사라지고 되돌릴 수 없어요.")) return;
-          del.disabled = true;
-          try { const r = await db.rpc("delete_session", { p_id: s.id }); if (r.error) throw r.error; await loadMySessions(); }
-          catch (e) { del.disabled = false; showError("삭제하지 못했어요: " + (e.message || e)); }
-        });
-        const acts = document.createElement("div"); acts.className = "ts-acts"; acts.append(btn, toggle, del);
-        row.append(main, acts); box.appendChild(row);
+      // 전체/모둠 모드로 분류해 섹션별로 표시
+      const cls = list.filter(s => s.mode !== "group");
+      const grp = list.filter(s => s.mode === "group");
+      renderSessionSection(box, "📖 전체 모드", cls);
+      renderSessionSection(box, "🧩 모둠 모드", grp);
+    }
+    function renderSessionSection(box, label, items) {
+      if (!items.length) return;   // 비어 있는 분류는 생략
+      const h = document.createElement("div"); h.className = "tc-group-label"; h.textContent = label + " · " + items.length + "개";
+      box.appendChild(h);
+      items.forEach(s => box.appendChild(makeSessionRow(s)));
+    }
+    function makeSessionRow(s) {
+      const isGroup = s.mode === "group";
+      const row = document.createElement("div"); row.className = "tc-session-row";
+      const main = document.createElement("div"); main.className = "ts-main";
+      const t = document.createElement("div"); t.className = "ts-title";
+      const badge = document.createElement("span"); badge.className = "ts-badge " + (isGroup ? "grp" : "cls");
+      badge.textContent = isGroup ? "모둠 " + (s.group_count || "?") + "개" : "전체";
+      const ttl = document.createElement("span"); ttl.textContent = " " + (s.title || "(제목 없음)");
+      t.append(badge, ttl);
+      const meta = document.createElement("div"); meta.className = "ts-meta";
+      meta.textContent = "코드 " + s.access_code + " · 질문 " + s.questions + (s.status === "closed" ? " · 닫힘" : "");
+      main.append(t, meta);
+      const btn = document.createElement("button"); btn.className = "btn ghost"; btn.type = "button"; btn.textContent = "👁 관전";
+      btn.addEventListener("click", () => startWatch(s.access_code));
+      const toggle = document.createElement("button"); toggle.className = "btn ghost"; toggle.type = "button";
+      toggle.textContent = s.status === "closed" ? "열기" : "닫기";
+      toggle.addEventListener("click", async () => {
+        toggle.disabled = true;
+        try { const r = await db.rpc("set_session_status", { p_id: s.id, p_status: s.status === "closed" ? "open" : "closed" }); if (r.error) throw r.error; await loadMySessions(); }
+        catch (e) { toggle.disabled = false; showError("바꾸지 못했어요: " + (e.message || e)); }
       });
+      const del = document.createElement("button"); del.className = "btn ghost"; del.type = "button"; del.textContent = "🗑 삭제"; del.style.color = "var(--infer)";
+      del.addEventListener("click", async () => {
+        if (!confirm("이 수업을 지울까요? 학생 질문·실까지 모두 사라지고 되돌릴 수 없어요.")) return;
+        del.disabled = true;
+        try { const r = await db.rpc("delete_session", { p_id: s.id }); if (r.error) throw r.error; await loadMySessions(); }
+        catch (e) { del.disabled = false; showError("삭제하지 못했어요: " + (e.message || e)); }
+      });
+      const acts = document.createElement("div"); acts.className = "ts-acts"; acts.append(btn, toggle, del);
+      row.append(main, acts);
+      return row;
     }
 
     // 모드 전환 + 수업 만들기
