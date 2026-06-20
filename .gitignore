@@ -1,0 +1,10 @@
+# OS·로컬 도구
+.DS_Store
+.claude/
+.playwright-mcp/
+*.log
+
+# 내부 개발·기획 문서 — 공개 저장소 제외 (인프라·타 앱 보안 메모 포함)
+톱니질문트랙_개발계획.md
+checklist.md
+context-notes.md

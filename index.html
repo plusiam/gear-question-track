@@ -1,0 +1,52 @@
+<!-- 톱니질문 트랙 — 홈(모드 선택) 진입점. 개인 모드는 app.html로, 실시간 모드는 공개수업 후(P2) -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>톱니질문 트랙</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Jua&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <main class="home-wrap">
+    <h1 class="home-title">⚙ 톱니질문 트랙</h1>
+    <p class="home-sub">질문을 만들고 · 나누고 · 톱니로 잇는 도구</p>
+
+    <div class="mode-grid">
+      <a class="mode-card live" href="./app.html">
+        <div class="mode-emoji">👤</div>
+        <div class="mode-name">혼자 해 보기</div>
+        <div class="mode-desc">내 질문을 만들고 톱니로 이어 봐요</div>
+      </a>
+      <div class="mode-card soon" id="card-room" role="button" tabindex="0" aria-label="방 들어가기 (실시간) — 공개수업 후 열려요">
+        <div class="mode-emoji">🧩</div>
+        <div class="mode-name">방 들어가기</div>
+        <div class="mode-desc">친구들과 함께 (실시간)</div>
+        <div class="soon-tag">공개수업 후 열려요 🔜</div>
+      </div>
+    </div>
+
+    <div class="teacher-row">
+      <button class="teacher-link" id="teacher-btn" type="button">🧑‍🏫 선생님 ▸ 새 활동(방) 만들기</button>
+    </div>
+
+    <div class="home-notice" id="notice" hidden></div>
+  </main>
+
+  <script>
+    "use strict";
+    // 1단계: 홈 + 라우팅. 개인 모드는 app.html로(지금 동작). 실시간 방은 백엔드(P2)가 켜진 뒤.
+    const notice = document.getElementById("notice");
+    function showNotice(msg) { notice.hidden = false; notice.textContent = msg; }
+    const roomCard = document.getElementById("card-room");
+    roomCard.addEventListener("click", () =>
+      showNotice("🔜 실시간 ‘방’(모둠·전체)은 공개수업 이후에 열려요. 지금은 ‘혼자 해 보기’로 바로 체험할 수 있어요."));
+    roomCard.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); roomCard.click(); } });
+    document.getElementById("teacher-btn").addEventListener("click", () =>
+      showNotice("🔜 실시간 모둠/전체 모드는 공개수업 이후 제공돼요. 그때 여기서 책 제목·장면을 입력해 방을 열 수 있어요."));
+  </script>
+</body>
+</html>

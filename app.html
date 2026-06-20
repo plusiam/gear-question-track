@@ -1,0 +1,94 @@
+<!-- 톱니질문 트랙 — 앱(생성·분류·잇기). 진입점은 index.html(홈). 개인 모드는 백엔드 없이 localStorage로 동작 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>톱니질문 트랙</title>
+  <!-- 5학년 친화 둥근/손글씨 웹폰트 (없어도 시스템 글꼴로 동작) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Jua&display=swap" rel="stylesheet" />
+  <!-- 이미지 내보내기용 (없어도 인쇄는 동작) -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <a href="./index.html" class="home-link">← 홈</a>
+
+  <!-- 이어하기 배너 -->
+  <div class="resume-bar" id="resumeBar">
+    <span>💾 이전에 하던 내용을 불러왔어요.</span>
+    <button class="btn ghost" id="btn-new">새로 시작하기</button>
+    <button class="btn ghost" id="btn-keep">이어서 하기</button>
+  </div>
+
+  <!-- 상단 장면 바 (범용 설정) -->
+  <header class="scene-bar">
+    <div class="row">
+      <label for="f-title">책 제목</label>
+      <input id="f-title" type="text" placeholder="예: 연우의 도전 (어떤 책·글이든 적어요)" />
+      <button class="btn ghost" id="btn-export-json" type="button">💾 결과 저장</button>
+      <button class="btn ghost" id="btn-import-json" type="button">📂 불러오기</button>
+      <button class="btn ghost" id="btn-sound" type="button" aria-pressed="true">🔊 소리</button>
+      <button class="btn ghost" id="btn-reset" type="button">↺ 전부 비우기</button>
+      <input type="file" id="file-json" accept="application/json,.json" hidden />
+    </div>
+    <div class="row">
+      <label for="f-scene">장면</label>
+      <textarea id="f-scene" placeholder="질문을 만들 장면이나 글을 적어요."></textarea>
+    </div>
+    <div class="row"><span class="hint">📖 책 제목과 장면을 적으면, 그 장면으로 질문을 만들 수 있어요.</span></div>
+  </header>
+
+  <!-- 스텝퍼 -->
+  <nav class="stepper" aria-label="단계">
+    <button type="button" data-phase="create">① 만들기</button>
+    <button type="button" data-phase="classify">② 나누기</button>
+    <button type="button" data-phase="connect">③ 잇기</button>
+  </nav>
+
+  <!-- ① 생성 -->
+  <section class="panel" id="panel-create" aria-label="질문 만들기">
+    <h2>① 질문 만들기</h2>
+    <div class="sub">장면을 보고 떠오르는 질문을 자유롭게 만들어요. 많을수록 좋아요.</div>
+    <div class="scene-show" id="scene-show"></div>
+    <div class="add-row">
+      <textarea id="f-newq" placeholder="질문을 적고 ‘추가’를 눌러요." maxlength="80"></textarea>
+      <button class="btn" id="btn-add" type="button">＋ 추가</button>
+    </div>
+    <div class="counter" id="newq-counter">0 / 80자</div>
+    <div class="list" id="create-list"></div>
+  </section>
+
+  <!-- ② 분류 -->
+  <section class="panel" id="panel-classify" aria-label="질문 나누기">
+    <h2>② 사실 · 추론 · 상상으로 나누기</h2>
+    <div class="sub">“이 질문의 답이 어디 있지?”로 나눠요. 카드를 누른 뒤 칸을 누르면 들어가요. (정답 없음 · 언제든 다시)</div>
+    <div class="axis"><span>📖 책 속에서 찾아요</span><span>책 바탕 추론</span><span>💭 내 머릿속에서 떠올려요</span></div>
+    <div class="unsorted" id="classify-unsorted"></div>
+    <div class="columns" id="classify-cols"></div>
+  </section>
+
+  <!-- ③ 잇기 -->
+  <section class="panel" id="panel-connect" aria-label="톱니로 잇기">
+    <h2>③ 톱니로 한 실 꿰기</h2>
+    <div class="sub">사실 → 추론 → 상상을 하나씩 골라 끼워요. 사이에 ‘다리 한 줄’을 적으면 더 좋아요.</div>
+    <div id="export-target">
+      <div class="export-title" id="export-title"></div>
+      <div class="track" id="connect-track"></div>
+    </div>
+    <div class="done-banner" id="doneBanner">⚙ 한 실 완성! 톱니가 돌아갑니다.</div>
+    <div class="export-actions">
+      <button class="btn ghost" id="btn-png" type="button">🖼 이미지로 저장</button>
+      <button class="btn ghost" id="btn-print" type="button">🖨 인쇄</button>
+    </div>
+    <div class="pool"><h3>고를 수 있는 질문</h3><div class="pool-cols" id="connect-pool"></div></div>
+  </section>
+
+  <div class="sr-only" aria-live="polite" id="liveRegion"></div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="./js/app.js"></script>
+</body>
+</html>
