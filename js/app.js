@@ -259,8 +259,44 @@ function renderClassify() {
   });
 }
 
+// 다중 실 — 같은 장면에 여러 코스(각 실은 1-1-1 유지). 개인 모드 우선(실시간은 추후)
+function addThread() {
+  const n = S.threads.reduce((m, t) => Math.max(m, +(String(t.id).replace(/\D/g, "")) || 0), 0) + 1;
+  const t = newThread("th" + n);
+  S.threads.push(t); S.activeThreadId = t.id; clearSelect();
+  save(); render();
+}
+function deleteActiveThread() {
+  if (S.threads.length <= 1) return;
+  S.threads = S.threads.filter(t => t.id !== S.activeThreadId);
+  S.activeThreadId = S.threads[0].id; clearSelect();
+  save(); render();
+}
+function renderThreadTabs() {
+  const bar = document.getElementById("thread-tabs");
+  if (!bar) return;
+  if (adapter.remote) { bar.hidden = true; bar.textContent = ""; return; }   // 실시간은 단일 실(다중 실은 추후)
+  bar.hidden = false; bar.textContent = "";
+  S.threads.forEach((t, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "thread-tab" + (t.id === S.activeThreadId ? " on" : "");
+    b.textContent = "실 " + (i + 1);
+    b.addEventListener("click", () => { S.activeThreadId = t.id; clearSelect(); render(); });
+    bar.appendChild(b);
+  });
+  const add = document.createElement("button"); add.type = "button"; add.className = "thread-tab add"; add.textContent = "＋ 새 실";
+  add.addEventListener("click", addThread);
+  bar.appendChild(add);
+  if (S.threads.length > 1) {
+    const del = document.createElement("button"); del.type = "button"; del.className = "thread-tab del"; del.textContent = "🗑 이 실";
+    del.addEventListener("click", () => { if (confirm("지금 보고 있는 실을 지울까요?")) deleteActiveThread(); });
+    bar.appendChild(del);
+  }
+}
+
 function renderConnect() {
   const th = activeThread();
+  renderThreadTabs();
   document.getElementById("export-title").textContent = S.title ? ("📖 " + S.title) : "";
   const track = document.getElementById("connect-track");
   track.textContent = "";
