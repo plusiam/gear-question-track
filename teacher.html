@@ -67,12 +67,35 @@
     .tc-q .lab { font-size: .72em; font-weight: 800; color: #fff; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
     .tc-q .who { color: var(--muted); font-size: .8em; margin-left: auto; white-space: nowrap; }
     .tc-grouptiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-    .tc-grouptile { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 6px; }
+    .tc-grouptile { font: inherit; text-align: left; cursor: pointer; width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 6px; }
+    .tc-grouptile:hover, .tc-grouptile:focus-visible { border-color: var(--imagine); box-shadow: 0 4px 12px rgba(0,0,0,.08); outline: none; }
     .tc-grouptile .gt-head { font-weight: 800; font-size: 1.05em; }
     .tc-grouptile .gt-scene { font-size: .9em; min-height: 2.4em; }
     .tc-grouptile .gt-counts { color: var(--muted); font-size: .82em; }
     .tc-grouptile .gt-thread { font-size: .85em; font-weight: 700; color: var(--muted); }
     .tc-grouptile .gt-thread.done { color: var(--imagine); }
+
+    /* 모둠 발표 모드 (전자칠판용 — 큰 글씨) */
+    .tc-present-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    .tc-present-title { font-weight: 800; font-size: 1.4rem; flex: 1; text-align: center; min-width: 120px; }
+    .tc-present-scene { background: #f3f6ff; border: 1px dashed #b9c6ec; border-radius: 12px; padding: 14px 16px; font-size: 1.15rem; margin-bottom: 16px; }
+    .tc-present-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .tc-present-col { border: 2px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 8px; align-content: start; }
+    .tc-present-col.fact { border-color: var(--fact); } .tc-present-col.infer { border-color: var(--infer); } .tc-present-col.imagine { border-color: var(--imagine); }
+    .tc-present-col .tpc-head { font-weight: 800; font-size: 1.1rem; }
+    .tc-present-col.fact .tpc-head { color: var(--fact); } .tc-present-col.infer .tpc-head { color: var(--infer); } .tc-present-col.imagine .tpc-head { color: var(--imagine); }
+    .tpc-q { font-size: 1.05rem; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+    .tpc-q:last-child { border-bottom: none; padding-bottom: 0; }
+    .tc-present-thread { margin-top: 18px; }
+    .tpt-label { font-weight: 800; font-size: 1.1rem; margin-bottom: 10px; }
+    .tpt-chain { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+    .tpt-cell { flex: 1 1 0; min-width: 130px; border: 2px solid var(--line); border-radius: 12px; padding: 12px; font-size: 1.1rem; }
+    .tpt-cell.fact { border-color: var(--fact); background: var(--fact-bg); }
+    .tpt-cell.infer { border-color: var(--infer); background: var(--infer-bg); }
+    .tpt-cell.imagine { border-color: var(--imagine); background: var(--imagine-bg); }
+    .tpt-cl { font-weight: 800; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+    .tpt-bridge { align-self: center; color: var(--muted); font-size: .9rem; max-width: 150px; text-align: center; }
+    @media (max-width: 640px) { .tc-present-cols { grid-template-columns: 1fr; } .tpt-chain { flex-direction: column; } .tpt-bridge { max-width: none; } }
 
     /* 관리자 — 교사 승인 */
     .tc-teacher-row { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
@@ -212,6 +235,9 @@
     const db = supa.schema(cfg.schema);
     const $ = id => document.getElementById(id);
     let myRole = "teacher", activeCode = null, pollTimer = null, lastJson = "";
+    let watchGroupNo = null;   // 모둠 발표 모드: null=타일(한눈에), N=그 모둠 펼쳐 보기
+    let lastBoardData = null;  // 네비(이전/다음)로 다시 그릴 때 쓰는 마지막 board
+    function mkBtn(label, fn) { const b = document.createElement("button"); b.className = "btn ghost"; b.type = "button"; b.textContent = label; b.addEventListener("click", fn); return b; }
 
     const VIEWS = ["signin", "pending", "suspended", "home", "watch", "admin"];
     function showView(name) { VIEWS.forEach(v => $("view-" + v).hidden = (v !== name)); }
@@ -246,7 +272,7 @@
     $("nav-home").addEventListener("click", () => showHome());   // 어디서든 내 수업(관전 목록)으로
 
     // ===== 교사 홈 — 내 수업 목록 =====
-    async function showHome() { stopPoll(); activeCode = null; showView("home"); await loadMySessions(); }
+    async function showHome() { stopPoll(); activeCode = null; watchGroupNo = null; showView("home"); await loadMySessions(); }
     async function loadMySessions() {
       const box = $("home-sessions"); box.textContent = "불러오는 중…";
       let list;
@@ -325,7 +351,7 @@
       catch (e) { prompt("학생에게 줄 링크예요:", url); }
     });
     function startWatch(code) {
-      activeCode = code; showView("watch");
+      activeCode = code; watchGroupNo = null; showView("watch");
       $("w-code").textContent = code; lastJson = "";
       pollWatch(); stopPoll(); pollTimer = setInterval(pollWatch, POLL_MS);
     }
@@ -333,11 +359,16 @@
       let data;
       try { const r = await db.rpc("board", { p_code: activeCode }); if (r.error) throw r.error; data = r.data; }
       catch (e) { stopPoll(); showError("이 수업을 더 볼 수 없어요(닫혔거나 만료). 내 수업으로 돌아가요."); showHome(); return; }
+      lastBoardData = data;
       const s = JSON.stringify(data); if (s === lastJson) return; lastJson = s; renderWatch(data);
     }
     function renderWatch(board) {
       const sess = board.session || {}, qs = board.questions || [];
-      if (sess.mode === "group") { $("w-counts").hidden = true; $("w-list-wrap").hidden = true; renderGroupTiles(board); return; }
+      if (sess.mode === "group") {
+        $("w-counts").hidden = true; $("w-list-wrap").hidden = true;
+        if (watchGroupNo != null) renderGroupDetail(board, watchGroupNo); else renderGroupTiles(board);
+        return;
+      }
       $("w-counts").hidden = false; $("w-list-wrap").hidden = false; $("w-grouplinks-wrap").hidden = true;
       $("w-scene").textContent = (sess.title ? "📖 " + sess.title + " — " : "") + (sess.scene || "(장면 미정 — 학생들이 함께 정해요)");
       const by = { fact: 0, infer: 0, imagine: 0, none: 0 };
@@ -377,24 +408,83 @@
         gl.appendChild(b);
       }
       $("w-grouplinks-wrap").hidden = false;
-      const list = $("w-qlist"); list.className = "tc-grouptiles"; list.textContent = "";
+      const list = $("w-qlist"); list.className = ""; list.textContent = "";
       $("w-list-wrap").hidden = false;
-      if (!nums.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 들어온 모둠이 없어요."; list.appendChild(n); return; }
-      nums.forEach(g => {
+      const hint = document.createElement("div"); hint.className = "tc-muted"; hint.style.margin = "0 0 8px";
+      hint.textContent = "모둠을 누르면 전자칠판에 크게 펼쳐 발표할 수 있어요(← 이전 / 다음 →으로 돌아가며 공유).";
+      list.appendChild(hint);
+      const grid = document.createElement("div"); grid.className = "tc-grouptiles"; list.appendChild(grid);
+      // 교사가 정한 모둠 수만큼 타일(빈 모둠 포함) — 누르면 발표 모드
+      for (let g = 1; g <= gcount; g++) {
         const gq = qs.filter(q => q.group_no === g);
         const by = { fact: 0, infer: 0, imagine: 0 }; gq.forEach(q => { if (q.type) by[q.type]++; });
         const scene = (groups.find(x => x.group_no === g) || {}).scene || "";
         const th = threads.find(t => t.group_no === g), slots = (th && th.slots) || {};
         const filled = ["fact", "infer", "imagine"].filter(k => slots[k]).length;
-        const tile = document.createElement("div"); tile.className = "tc-grouptile";
+        const tile = document.createElement("button"); tile.type = "button"; tile.className = "tc-grouptile";
+        tile.addEventListener("click", () => { watchGroupNo = g; renderWatch(lastBoardData); });
         const h = document.createElement("div"); h.className = "gt-head"; h.textContent = g + " 모둠";
         const sc = document.createElement("div"); sc.className = "gt-scene"; sc.textContent = scene || "(장면 미정)";
         const cnt = document.createElement("div"); cnt.className = "gt-counts";
         cnt.textContent = "질문 " + gq.length + " · 사실 " + by.fact + " · 추론 " + by.infer + " · 상상 " + by.imagine;
         const thr = document.createElement("div"); thr.className = "gt-thread" + (filled === 3 ? " done" : "");
         thr.textContent = filled === 3 ? "⚙ 한 실 완성!" : "실 " + filled + "/3";
-        tile.append(h, sc, cnt, thr); list.appendChild(tile);
+        tile.append(h, sc, cnt, thr); grid.appendChild(tile);
+      }
+    }
+
+    // 모둠 발표 모드 — 한 모둠을 전자칠판에 크게 펼치고 이전/다음으로 순환
+    function gotoGroup(n, count) { if (n < 1) n = count; if (n > count) n = 1; watchGroupNo = n; renderWatch(lastBoardData); }
+    function renderGroupDetail(board, g) {
+      const sess = board.session || {}, allq = board.questions || [], groups = board.groups || [], threads = board.threads || [];
+      const count = sess.group_count || g;
+      const qs = allq.filter(q => q.group_no === g);
+      const scene = (groups.find(x => x.group_no === g) || {}).scene || "";
+      const th = threads.find(t => t.group_no === g), slots = (th && th.slots) || {}, bridges = (th && th.bridges) || {};
+      const qById = id => allq.find(q => q.id === id) || {};
+      $("w-grouplinks-wrap").hidden = true; $("w-scene").textContent = ""; $("w-list-wrap").hidden = false;
+      const list = $("w-qlist"); list.className = "tc-present"; list.textContent = "";
+
+      const nav = document.createElement("div"); nav.className = "tc-present-nav";
+      const title = document.createElement("div"); title.className = "tc-present-title"; title.textContent = g + " 모둠  ·  " + g + " / " + count;
+      nav.append(mkBtn("← 이전 모둠", () => gotoGroup(g - 1, count)), title,
+                 mkBtn("다음 모둠 →", () => gotoGroup(g + 1, count)),
+                 mkBtn("▦ 모둠 한눈에", () => { watchGroupNo = null; renderWatch(lastBoardData); }));
+      list.appendChild(nav);
+
+      const sc = document.createElement("div"); sc.className = "tc-present-scene";
+      sc.textContent = "📖 " + (scene || "(이 모둠은 아직 장면을 안 정했어요)");
+      list.appendChild(sc);
+
+      const cols = document.createElement("div"); cols.className = "tc-present-cols";
+      ["fact", "infer", "imagine"].forEach(type => {
+        const col = document.createElement("div"); col.className = "tc-present-col " + type;
+        const h = document.createElement("div"); h.className = "tpc-head"; h.textContent = KO[type];
+        col.appendChild(h);
+        const tq = qs.filter(q => q.type === type);
+        if (!tq.length) { const e = document.createElement("div"); e.className = "tc-muted"; e.textContent = "—"; col.appendChild(e); }
+        else tq.forEach(q => { const d = document.createElement("div"); d.className = "tpc-q"; d.textContent = q.text; col.appendChild(d); });
+        cols.appendChild(col);
       });
+      list.appendChild(cols);
+      const un = qs.filter(q => !q.type);
+      if (un.length) { const u = document.createElement("div"); u.className = "tc-muted"; u.style.marginTop = "8px"; u.textContent = "안 나눔: " + un.map(q => q.text).join("  ·  "); list.appendChild(u); }
+
+      const tw = document.createElement("div"); tw.className = "tc-present-thread";
+      const tl = document.createElement("div"); tl.className = "tpt-label"; tl.textContent = "⚙ 톱니 한 실"; tw.appendChild(tl);
+      if (slots.fact || slots.infer || slots.imagine) {
+        const chain = document.createElement("div"); chain.className = "tpt-chain";
+        ["fact", "infer", "imagine"].forEach((type, i) => {
+          const cell = document.createElement("div"); cell.className = "tpt-cell " + type;
+          const cl = document.createElement("div"); cl.className = "tpt-cl"; cl.textContent = KO[type];
+          const q = slots[type] ? qById(slots[type]) : null;
+          const tx = document.createElement("div"); tx.textContent = (q && q.text) ? q.text : "(비어 있음)";
+          cell.append(cl, tx); chain.appendChild(cell);
+          if (i < 2) { const br = document.createElement("div"); br.className = "tpt-bridge"; br.textContent = bridges[type] ? "↳ " + bridges[type] : "↓"; chain.appendChild(br); }
+        });
+        tw.appendChild(chain);
+      } else { const e = document.createElement("div"); e.className = "tc-muted"; e.textContent = "아직 한 실을 안 만들었어요."; tw.appendChild(e); }
+      list.appendChild(tw);
     }
 
     // ===== 관리자 — 교사 승인 =====
