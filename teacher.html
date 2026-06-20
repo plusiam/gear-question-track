@@ -1,0 +1,249 @@
+<!-- 톱니질문 트랙 — 교사 콘솔(B). 구글 로그인 → 승인/대시보드 → 수업 만들기(전체 모드) → 관전 발산보드. gear 스키마 RPC + Supabase Auth -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>톱니질문 트랙 · 선생님</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/config.js"></script>
+  <style>
+    /* 교사 콘솔 전용 레이아웃 (학생 화면과 분리) */
+    [hidden] { display: none !important; }   /* display:grid/flex가 hidden 속성을 덮지 않게 */
+    .tc-wrap { max-width: 860px; margin: 4vh auto 0; }
+    .tc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+    .tc-head h1 { font-size: 1.5rem; }
+    .tc-who { color: var(--muted); font-size: .9em; display: flex; align-items: center; gap: 8px; }
+    .tc-card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+    .tc-center { text-align: center; padding: 8vh 16px; display: grid; gap: 16px; justify-items: center; }
+    .tc-field { display: grid; gap: 6px; margin-bottom: 12px; }
+    .tc-field label { font-weight: 700; font-size: .9em; }
+    .tc-field input, .tc-field textarea {
+      font: inherit; border: 2px solid var(--line); border-radius: 10px; padding: 9px 12px;
+      font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+    }
+    .tc-field textarea { resize: vertical; min-height: 70px; }
+    .tc-code-box { text-align: center; background: var(--fact-bg); border: 2px solid var(--fact); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
+    .tc-code { font-size: 2.4rem; font-weight: 800; letter-spacing: .2em; color: var(--fact); }
+    .tc-link-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+    .tc-counts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 14px 0; }
+    .tc-count { text-align: center; border: 1px solid var(--line); border-radius: 12px; padding: 10px 6px; }
+    .tc-count b { display: block; font-size: 1.8rem; line-height: 1.1; }
+    .tc-count span { font-size: .8em; color: var(--muted); }
+    .tc-count.fact { border-color: var(--fact); } .tc-count.fact b { color: var(--fact); }
+    .tc-count.infer { border-color: var(--infer); } .tc-count.infer b { color: var(--infer); }
+    .tc-count.imagine { border-color: var(--imagine); } .tc-count.imagine b { color: var(--imagine); }
+    .tc-qlist { display: grid; gap: 6px; }
+    .tc-q { display: flex; gap: 8px; align-items: baseline; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+    .tc-q .lab { font-size: .72em; font-weight: 800; color: #fff; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+    .tc-q .who { color: var(--muted); font-size: .8em; margin-left: auto; white-space: nowrap; }
+    .tc-muted { color: var(--muted); font-size: .9em; }
+    @media (max-width: 560px) { .tc-counts { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <main class="tc-wrap">
+    <div class="tc-head">
+      <h1>⚙ 톱니질문 트랙 · 선생님</h1>
+      <div class="tc-who" id="who" hidden>
+        <span id="who-name"></span>
+        <button class="btn ghost" id="btn-signout" type="button">로그아웃</button>
+      </div>
+    </div>
+
+    <!-- 로그인 전 -->
+    <section class="tc-center" id="view-signin" hidden>
+      <p class="tc-muted">선생님 계정(구글)으로 로그인하면 수업을 만들고 학생들의 질문을 관전할 수 있어요.</p>
+      <button class="btn" id="btn-signin" type="button">🔑 구글로 로그인</button>
+      <a class="home-link" href="./index.html">← 홈으로</a>
+    </section>
+
+    <!-- 승인 대기 -->
+    <section class="tc-center" id="view-pending" hidden>
+      <p style="font-size:1.1em">🕐 승인 대기 중이에요.</p>
+      <p class="tc-muted">관리자 승인 후 수업을 만들 수 있어요. 잠시 후 다시 시도해 주세요.</p>
+      <button class="btn ghost" id="btn-recheck" type="button">새로고침</button>
+    </section>
+
+    <!-- 정지 -->
+    <section class="tc-center" id="view-suspended" hidden>
+      <p style="font-size:1.1em">⛔ 사용이 제한된 계정이에요.</p>
+      <p class="tc-muted">관리자에게 문의해 주세요.</p>
+    </section>
+
+    <!-- 대시보드 (승인 교사) -->
+    <section id="view-dash" hidden>
+      <!-- 수업 만들기 -->
+      <div class="tc-card" id="create-card">
+        <h2 style="font-size:1.1em;margin-bottom:12px">새 수업(전체 모드) 만들기</h2>
+        <div class="tc-field">
+          <label for="t-title">책 제목</label>
+          <input id="t-title" type="text" maxlength="80" placeholder="예: 연우의 도전" />
+        </div>
+        <div class="tc-field">
+          <label for="t-scene">장면</label>
+          <textarea id="t-scene" maxlength="1000" placeholder="질문을 만들 장면이나 글을 적어요. (학생에게 그대로 보여요)"></textarea>
+        </div>
+        <button class="btn" id="btn-create" type="button">＋ 수업 열기</button>
+        <span class="tc-muted" id="create-msg" style="margin-left:10px"></span>
+      </div>
+
+      <!-- 관전 발산보드 -->
+      <div class="tc-card" id="watch-card" hidden>
+        <div class="tc-code-box">
+          <div class="tc-muted">학생 접속 코드</div>
+          <div class="tc-code" id="w-code"></div>
+          <div class="tc-link-row">
+            <button class="btn ghost" id="btn-copy-link" type="button">🔗 학생 링크 복사</button>
+            <button class="btn ghost" id="btn-new-session" type="button">새 수업 만들기</button>
+          </div>
+        </div>
+        <div class="tc-muted" id="w-scene" style="margin-bottom:8px"></div>
+        <div class="tc-counts">
+          <div class="tc-count"><b id="c-total">0</b><span>전체</span></div>
+          <div class="tc-count fact"><b id="c-fact">0</b><span>사실</span></div>
+          <div class="tc-count infer"><b id="c-infer">0</b><span>추론</span></div>
+          <div class="tc-count imagine"><b id="c-imagine">0</b><span>상상</span></div>
+          <div class="tc-count"><b id="c-none">0</b><span>안 나눔</span></div>
+        </div>
+        <div class="tc-qlist" id="w-qlist"></div>
+      </div>
+    </section>
+
+    <div class="home-notice" id="tc-error" hidden></div>
+  </main>
+
+  <script>
+    "use strict";
+    // gear 백엔드: 학생용 board()와 같은 RPC를 교사도 호출(관전). 쓰기/생성은 Auth 게이트 RPC(ensure_teacher·create_session).
+    const POLL_MS = 2500;
+    const KO = { fact: "사실", infer: "추론", imagine: "상상" };
+    const cfg = window.GQT_CONFIG;
+    const supa = window.supabase.createClient(cfg.url, cfg.anonKey);
+    const db = supa.schema(cfg.schema);
+    const LS_LAST = "gqt:teacher:lastCode";
+
+    let activeCode = null, pollTimer = null, lastJson = "";
+
+    const $ = id => document.getElementById(id);
+    function show(view) {
+      ["view-signin", "view-pending", "view-suspended", "view-dash"].forEach(v => $(v).hidden = (v !== view));
+    }
+    function showError(msg) { const e = $("tc-error"); e.hidden = false; e.textContent = msg; }
+
+    // ===== 인증 =====
+    async function init() {
+      const { data } = await supa.auth.getSession();
+      if (!data.session) { $("who").hidden = true; show("view-signin"); return; }
+      const user = data.session.user;
+      $("who").hidden = false;
+      $("who-name").textContent = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || user.email;
+      let status;
+      try {
+        const r = await db.rpc("ensure_teacher", { p_email: user.email, p_name: user.user_metadata && user.user_metadata.full_name });
+        if (r.error) throw r.error;
+        status = r.data;
+      } catch (e) { showError("교사 정보를 확인하지 못했어요: " + (e.message || e)); show("view-signin"); return; }
+      if (status === "approved") { show("view-dash"); resumeOrCreate(); }
+      else if (status === "suspended") show("view-suspended");
+      else show("view-pending");
+    }
+
+    $("btn-signin").addEventListener("click", () =>
+      supa.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } }));
+    $("btn-signout").addEventListener("click", async () => { stopPoll(); await supa.auth.signOut(); location.reload(); });
+    $("btn-recheck").addEventListener("click", () => location.reload());
+
+    // ===== 수업 만들기 =====
+    $("btn-create").addEventListener("click", async () => {
+      const title = $("t-title").value.trim(), scene = $("t-scene").value.trim();
+      if (!scene) { $("create-msg").textContent = "장면을 적어 주세요."; $("t-scene").focus(); return; }
+      $("btn-create").disabled = true; $("create-msg").textContent = "여는 중…";
+      try {
+        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: "class" });
+        if (error) throw error;
+        $("create-msg").textContent = "";
+        startWatch(data.access_code);
+      } catch (e) { $("create-msg").textContent = "실패: " + (e.message || e); }
+      finally { $("btn-create").disabled = false; }
+    });
+
+    $("btn-new-session").addEventListener("click", () => {
+      stopPoll(); activeCode = null; localStorage.removeItem(LS_LAST);
+      $("watch-card").hidden = true; $("create-card").hidden = false;
+      $("t-title").value = ""; $("t-scene").value = ""; $("t-title").focus();
+    });
+
+    $("btn-copy-link").addEventListener("click", async () => {
+      const url = studentUrl(activeCode);
+      try { await navigator.clipboard.writeText(url); $("btn-copy-link").textContent = "✓ 복사됨"; setTimeout(() => $("btn-copy-link").textContent = "🔗 학생 링크 복사", 1500); }
+      catch (e) { prompt("학생에게 줄 링크예요:", url); }
+    });
+
+    function studentUrl(code) { return location.origin + location.pathname.replace(/teacher\.html$/, "app.html") + "?code=" + code; }
+
+    // ===== 관전(발산보드) =====
+    function resumeOrCreate() {
+      const last = localStorage.getItem(LS_LAST);
+      if (last) startWatch(last);          // 새로고침해도 직전 수업 이어 관전
+      else { $("create-card").hidden = false; $("watch-card").hidden = true; }
+    }
+    function startWatch(code) {
+      activeCode = code; localStorage.setItem(LS_LAST, code);
+      $("create-card").hidden = true; $("watch-card").hidden = false;
+      $("w-code").textContent = code;
+      lastJson = ""; pollWatch();
+      stopPoll(); pollTimer = setInterval(pollWatch, POLL_MS);
+    }
+    function stopPoll() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+
+    async function pollWatch() {
+      let data;
+      try {
+        const r = await db.rpc("board", { p_code: activeCode });
+        if (r.error) throw r.error;
+        data = r.data;
+      } catch (e) {
+        // 코드 만료/삭제 → 관전 종료하고 만들기로
+        stopPoll(); localStorage.removeItem(LS_LAST);
+        $("watch-card").hidden = true; $("create-card").hidden = false;
+        $("create-msg").textContent = "이전 수업이 닫혔어요. 새로 만들어 주세요.";
+        return;
+      }
+      const s = JSON.stringify(data);
+      if (s === lastJson) return;          // 변화 없으면 렌더 생략
+      lastJson = s;
+      renderWatch(data);
+    }
+
+    function renderWatch(board) {
+      const sess = board.session || {}, qs = board.questions || [];
+      $("w-scene").textContent = (sess.title ? "📖 " + sess.title + " — " : "") + (sess.scene || "");
+      const by = { fact: 0, infer: 0, imagine: 0, none: 0 };
+      qs.forEach(q => { by[q.type || "none"]++; });
+      $("c-total").textContent = qs.length;
+      $("c-fact").textContent = by.fact; $("c-infer").textContent = by.infer;
+      $("c-imagine").textContent = by.imagine; $("c-none").textContent = by.none;
+
+      const list = $("w-qlist"); list.textContent = "";
+      if (!qs.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 학생 질문이 없어요."; list.appendChild(n); return; }
+      qs.forEach(q => {
+        const row = document.createElement("div"); row.className = "tc-q";
+        const lab = document.createElement("span");
+        lab.className = "lab lab-" + (q.type || "null"); lab.textContent = q.type ? KO[q.type] : "안 나눔";
+        const txt = document.createElement("span"); txt.textContent = q.text;   // 학생 입력 — textContent
+        row.append(lab, txt);
+        if (q.author_nick) { const w = document.createElement("span"); w.className = "who"; w.textContent = q.author_nick; row.appendChild(w); }
+        list.appendChild(row);
+      });
+    }
+
+    // OAuth 리다이렉트 복귀 시 세션 감지 후 시작
+    supa.auth.onAuthStateChange(() => {});  // detectSessionInUrl 기본 동작에 맡김
+    init();
+  </script>
+</body>
+</html>
