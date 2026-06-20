@@ -18,6 +18,9 @@
     .tc-head h1 { font-size: 1.4rem; }
     .tc-who { color: var(--muted); font-size: .9em; display: flex; align-items: center; gap: 10px; }
     .tc-badge { font-weight: 800; font-size: .82em; padding: 3px 10px; border-radius: 999px; background: var(--imagine-bg); color: var(--imagine); }
+    .tc-nav { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tc-navbtn { font: inherit; cursor: pointer; text-decoration: none; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: .9em; }
+    .tc-navbtn:hover { background: #f3f4f8; }
     .tc-card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
     .tc-card > h2 { font-size: 1.05em; margin-bottom: 12px; }
     .tc-center { text-align: center; padding: 8vh 16px; display: grid; gap: 16px; justify-items: center; }
@@ -87,6 +90,12 @@
         <button class="btn ghost" id="btn-signout" type="button">로그아웃</button>
       </div>
     </div>
+
+    <!-- 상단 내비(로그인 후 항상): 시작 페이지 / 내 수업(관전 목록) -->
+    <nav class="tc-nav" id="tc-nav" hidden>
+      <a class="tc-navbtn" href="./index.html">🏠 시작</a>
+      <button class="tc-navbtn" id="nav-home" type="button">📋 내 수업 · 관전</button>
+    </nav>
 
     <!-- 로그인 전 -->
     <section class="tc-center" id="view-signin" hidden>
@@ -221,7 +230,7 @@
       const badge = $("role-badge");
       if (res.status === "approved") { badge.hidden = false; badge.textContent = myRole === "admin" ? "👑 관리자" : "🧑‍🏫 교사"; }
       else badge.hidden = true;
-      if (res.status === "approved") { $("btn-admin").hidden = (myRole !== "admin"); showHome(); }   // 자동 관전 진입 안 함 — 홈으로 착지
+      if (res.status === "approved") { $("tc-nav").hidden = false; $("btn-admin").hidden = (myRole !== "admin"); showHome(); }   // 상단 내비 표시 + 홈 착지
       else if (res.status === "suspended") showView("suspended");
       else showView("pending");
     }
@@ -229,6 +238,7 @@
       supa.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } }));
     $("btn-signout").addEventListener("click", async () => { stopPoll(); await supa.auth.signOut(); location.reload(); });
     $("btn-recheck").addEventListener("click", () => location.reload());
+    $("nav-home").addEventListener("click", () => showHome());   // 어디서든 내 수업(관전 목록)으로
 
     // ===== 교사 홈 — 내 수업 목록 =====
     async function showHome() { stopPoll(); activeCode = null; showView("home"); await loadMySessions(); }
