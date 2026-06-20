@@ -84,8 +84,8 @@
           <input id="t-title" type="text" maxlength="80" placeholder="예: 연우의 도전" />
         </div>
         <div class="tc-field">
-          <label for="t-scene">장면</label>
-          <textarea id="t-scene" maxlength="1000" placeholder="질문을 만들 장면이나 글을 적어요. (학생에게 그대로 보여요)"></textarea>
+          <label for="t-scene">장면 <span style="font-weight:400;color:var(--muted)">(선택 — 비우면 학생들이 함께 정해요)</span></label>
+          <textarea id="t-scene" maxlength="1000" placeholder="질문을 만들 장면이나 글을 적어요. 비워두면 학생들이 직접 정합니다."></textarea>
         </div>
         <button class="btn" id="btn-create" type="button">＋ 수업 열기</button>
         <span class="tc-muted" id="create-msg" style="margin-left:10px"></span>
@@ -160,7 +160,7 @@
     // ===== 수업 만들기 =====
     $("btn-create").addEventListener("click", async () => {
       const title = $("t-title").value.trim(), scene = $("t-scene").value.trim();
-      if (!scene) { $("create-msg").textContent = "장면을 적어 주세요."; $("t-scene").focus(); return; }
+      // 장면은 선택 — 비우면 학생들이 방에서 함께 정함(공유 장면)
       $("btn-create").disabled = true; $("create-msg").textContent = "여는 중…";
       try {
         const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: "class" });

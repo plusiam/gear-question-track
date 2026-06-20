@@ -62,6 +62,10 @@ window.GQT_makeSupabaseAdapter = function ({ code, config, host }) {
     deleteQuestion(id) {
       return write(() => db.rpc("delete_question", { p_code: code, p_qid: id }).then(ok));
     },
+    // 공유 장면 — 교사가 비워둔 장면을 학생이 채움(서버가 '비어 있을 때만' 반영, 먼저 적은 것이 고정)
+    setScene(text) {
+      return write(() => db.rpc("set_scene", { p_code: code, p_text: text }).then(ok));
+    },
 
     // 드래그·집기 끝나 idle이 되면 stash해 둔 보드를 반영
     flush() { if (pending) { const b = pending; pending = null; host.onBoard(b); } },

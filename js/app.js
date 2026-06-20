@@ -409,10 +409,31 @@ function highlight(x, y, id) {
 // ===== 입력 바인딩 =====
 function syncInputs() {
   document.getElementById("f-title").value = S.title || "";
-  document.getElementById("f-scene").value = S.scene || "";
+  const fs = document.getElementById("f-scene");
+  if (document.activeElement !== fs) fs.value = S.scene || "";   // 장면 타이핑 중이면 폴링이 덮지 않게(클로버 가드)
+}
+// 실시간 공유 장면: 비어 있을 때만 학생이 편집 가능, 정해지면 읽기 전용(모두에게 동기화)
+function applyRemoteSceneState() {
+  if (!adapter.remote) return;
+  const fs = document.getElementById("f-scene");
+  const empty = !(S.scene && S.scene.trim());
+  fs.readOnly = !empty;
+  fs.classList.toggle("ro", !empty);
+  fs.placeholder = empty ? "아직 장면이 없어요. 함께 정해 적고 바깥을 누르면 친구들에게도 보여요." : "";
 }
 document.getElementById("f-title").addEventListener("input", e => setTitle(e.target.value));
-document.getElementById("f-scene").addEventListener("input", e => { setScene(e.target.value); document.getElementById("scene-show").textContent = e.target.value; });
+document.getElementById("f-scene").addEventListener("input", e => {
+  setScene(e.target.value);                                   // 로컬: S 저장 / 실시간: no-op(커밋은 blur에서)
+  if (!adapter.remote) document.getElementById("scene-show").textContent = e.target.value;
+});
+// 실시간 공유 장면 커밋 — 다 적고 바깥을 누르면(blur) 한 번 전송
+document.getElementById("f-scene").addEventListener("blur", async e => {
+  if (!adapter.remote) return;
+  const v = e.target.value.trim();
+  if (!v || (S.scene && S.scene.trim())) return;             // 빈 값·이미 정해진 장면은 전송 안 함
+  const r = await adapter.setScene(v);
+  if (r && r.ok) announce("장면을 정했어요. 친구들에게도 보여요.");
+});
 
 const newq = document.getElementById("f-newq");
 const counter = document.getElementById("newq-counter");
@@ -485,8 +506,8 @@ function configureRemoteUI(code) {
   const cbtn = document.querySelector('.stepper button[data-phase="connect"]');
   if (cbtn) cbtn.style.display = "none";                          // ③ 잇기 숨김
   ["btn-reset", "btn-import-json"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = "none"; });
-  const ft = document.getElementById("f-title"), fs = document.getElementById("f-scene");
-  ft.readOnly = true; fs.readOnly = true;                        // 장면은 교사 소유(읽기 전용)
+  document.getElementById("f-title").readOnly = true;            // 제목은 교사 소유
+  applyRemoteSceneState();                                       // 장면은 비었을 때만 학생 편집(이후 board 따라 갱신)
   const rb = document.getElementById("roomBar");
   if (rb) { rb.hidden = false; const c = rb.querySelector(".rb-code"); if (c) c.textContent = code; }
   if (S.phase === "connect") S.phase = "classify";
@@ -525,7 +546,7 @@ async function startRemote(code) {
   } catch (e) { showRoomError("실시간 기능을 불러오지 못했어요. 인터넷 연결을 확인해 주세요."); return; }
   configureRemoteUI(code);
   const host = {
-    onBoard(board) { applyBoard(board); syncInputs(); render(); },
+    onBoard(board) { applyBoard(board); syncInputs(); applyRemoteSceneState(); render(); },
     announce,
     busy() { return isDragging || selectedId !== null; }
   };
