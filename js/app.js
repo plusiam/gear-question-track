@@ -104,7 +104,6 @@ function setType(id, type) {
   save(); render();
 }
 function setSlot(type, id) {
-  if (adapter.remote && adapter.groupNo == null) return; // 전체 모드엔 ③ 없음
   const th = activeThread();
   if (id) {
     const q = qById(id);
@@ -117,7 +116,6 @@ function setSlot(type, id) {
   save(); render();
 }
 function setBridge(srcSlot, text) {
-  if (adapter.remote && adapter.groupNo == null) return; // 전체 모드엔 ③ 없음
   const th = activeThread();
   th.bridges[srcSlot] = text;                            // 낙관적 로컬(입력칸은 그대로)
   if (adapter.remote) { clearTimeout(bridgeSaveTimer); bridgeSaveTimer = setTimeout(() => adapter.saveThread(th.slots, th.bridges), 500); return; }
@@ -521,12 +519,15 @@ function applyBoard(board) {
       : newThread("th1") ];
     S.activeThreadId = "th1";
   } else {
-    // 전체 모드 — 공유 풀, ③ 없음
+    // 전체 모드 — 공유 풀 + 학급 공유 실 1개(group_no=null, 교사 주도로 함께 잇기)
     S.scene = sess.scene || "";
     S.questions = allQ.map(q => ({ id: q.id, text: q.text, type: q.type || null }));
-    S.threads = [newThread("th1")];
+    const th = (board.threads || []).find(t => t.group_no == null);
+    S.threads = [ th
+      ? { id: "th1", slots: Object.assign({ fact: null, infer: null, imagine: null }, th.slots || {}),
+                     bridges: Object.assign({ fact: "", infer: "" }, th.bridges || {}) }
+      : newThread("th1") ];
     S.activeThreadId = "th1";
-    if (S.phase === "connect") S.phase = "classify";
   }
 }
 function setConnectVisible(show) {
@@ -619,7 +620,8 @@ async function startRemote(code) {
       if (isGroup && adapter.groupNo == null) { showGroupPicker(); return; }
       const rbg = document.querySelector("#roomBar .rb-group");
       if (rbg) rbg.textContent = isGroup ? " · " + adapter.groupNo + "모둠" : "";
-      applyBoard(board); syncInputs(); applyRemoteSceneState(); setConnectVisible(isGroup); render();
+      applyBoard(board); syncInputs(); applyRemoteSceneState(); setConnectVisible(true); render();   // ③ 잇기: 전체(공유 실)·모둠 모두
+
     },
     announce,
     busy() { return isDragging || selectedId !== null || bridgeFocused(); }  // 다리 입력 중엔 폴링이 덮지 않게
