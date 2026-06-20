@@ -35,8 +35,9 @@
 
     /* 내 수업 목록 */
     .tc-sessions { display: grid; gap: 8px; }
-    .tc-session-row { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-    .tc-session-row .ts-main { flex: 1; min-width: 0; }
+    .tc-session-row { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; flex-wrap: wrap; }
+    .tc-session-row .ts-main { flex: 1; min-width: 160px; }
+    .tc-session-row .ts-acts { display: flex; gap: 6px; flex-wrap: wrap; }
     .tc-session-row .ts-title { font-weight: 700; }
     .tc-session-row .ts-meta { color: var(--muted); font-size: .82em; }
 
@@ -247,7 +248,22 @@
         main.append(t, meta);
         const btn = document.createElement("button"); btn.className = "btn ghost"; btn.type = "button"; btn.textContent = "👁 관전";
         btn.addEventListener("click", () => startWatch(s.access_code));
-        row.append(main, btn); box.appendChild(row);
+        const toggle = document.createElement("button"); toggle.className = "btn ghost"; toggle.type = "button";
+        toggle.textContent = s.status === "closed" ? "열기" : "닫기";
+        toggle.addEventListener("click", async () => {
+          toggle.disabled = true;
+          try { const r = await db.rpc("set_session_status", { p_id: s.id, p_status: s.status === "closed" ? "open" : "closed" }); if (r.error) throw r.error; await loadMySessions(); }
+          catch (e) { toggle.disabled = false; showError("바꾸지 못했어요: " + (e.message || e)); }
+        });
+        const del = document.createElement("button"); del.className = "btn ghost"; del.type = "button"; del.textContent = "🗑 삭제"; del.style.color = "var(--infer)";
+        del.addEventListener("click", async () => {
+          if (!confirm("이 수업을 지울까요? 학생 질문·실까지 모두 사라지고 되돌릴 수 없어요.")) return;
+          del.disabled = true;
+          try { const r = await db.rpc("delete_session", { p_id: s.id }); if (r.error) throw r.error; await loadMySessions(); }
+          catch (e) { del.disabled = false; showError("삭제하지 못했어요: " + (e.message || e)); }
+        });
+        const acts = document.createElement("div"); acts.className = "ts-acts"; acts.append(btn, toggle, del);
+        row.append(main, acts); box.appendChild(row);
       });
     }
 
