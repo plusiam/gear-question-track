@@ -41,6 +41,15 @@
     .tc-q .lab { font-size: .72em; font-weight: 800; color: #fff; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
     .tc-q .who { color: var(--muted); font-size: .8em; margin-left: auto; white-space: nowrap; }
     .tc-muted { color: var(--muted); font-size: .9em; }
+    .tc-modes { display: grid; gap: 6px; }
+    .tc-modes label { font-weight: 400; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .tc-grouptiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+    .tc-grouptile { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 6px; }
+    .tc-grouptile .gt-head { font-weight: 800; font-size: 1.05em; }
+    .tc-grouptile .gt-scene { color: var(--ink); font-size: .9em; min-height: 2.4em; }
+    .tc-grouptile .gt-counts { color: var(--muted); font-size: .82em; }
+    .tc-grouptile .gt-thread { font-size: .85em; font-weight: 700; color: var(--muted); }
+    .tc-grouptile .gt-thread.done { color: var(--imagine); }
     @media (max-width: 560px) { .tc-counts { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
@@ -78,12 +87,19 @@
     <section id="view-dash" hidden>
       <!-- 수업 만들기 -->
       <div class="tc-card" id="create-card">
-        <h2 style="font-size:1.1em;margin-bottom:12px">새 수업(전체 모드) 만들기</h2>
+        <h2 style="font-size:1.1em;margin-bottom:12px">새 수업 만들기</h2>
+        <div class="tc-field">
+          <label>모드</label>
+          <div class="tc-modes">
+            <label><input type="radio" name="t-mode" value="class" checked /> 전체 — 한 장면에 반 전체가 함께</label>
+            <label><input type="radio" name="t-mode" value="group" /> 모둠 — 모둠마다 장면·질문·실을 따로</label>
+          </div>
+        </div>
         <div class="tc-field">
           <label for="t-title">책 제목</label>
           <input id="t-title" type="text" maxlength="80" placeholder="예: 연우의 도전" />
         </div>
-        <div class="tc-field">
+        <div class="tc-field" id="scene-field">
           <label for="t-scene">장면 <span style="font-weight:400;color:var(--muted)">(선택 — 비우면 학생들이 함께 정해요)</span></label>
           <textarea id="t-scene" maxlength="1000" placeholder="질문을 만들 장면이나 글을 적어요. 비워두면 학생들이 직접 정합니다."></textarea>
         </div>
@@ -102,7 +118,7 @@
           </div>
         </div>
         <div class="tc-muted" id="w-scene" style="margin-bottom:8px"></div>
-        <div class="tc-counts">
+        <div class="tc-counts" id="w-counts">
           <div class="tc-count"><b id="c-total">0</b><span>전체</span></div>
           <div class="tc-count fact"><b id="c-fact">0</b><span>사실</span></div>
           <div class="tc-count infer"><b id="c-infer">0</b><span>추론</span></div>
@@ -157,13 +173,19 @@
     $("btn-signout").addEventListener("click", async () => { stopPoll(); await supa.auth.signOut(); location.reload(); });
     $("btn-recheck").addEventListener("click", () => location.reload());
 
+    // 모드 전환 — 모둠 모드면 세션 장면칸 숨김(모둠마다 따로 정함)
+    function selectedMode() { const r = document.querySelector('input[name="t-mode"]:checked'); return r ? r.value : "class"; }
+    document.querySelectorAll('input[name="t-mode"]').forEach(r =>
+      r.addEventListener("change", () => { $("scene-field").hidden = selectedMode() === "group"; }));
+
     // ===== 수업 만들기 =====
     $("btn-create").addEventListener("click", async () => {
-      const title = $("t-title").value.trim(), scene = $("t-scene").value.trim();
-      // 장면은 선택 — 비우면 학생들이 방에서 함께 정함(공유 장면)
+      const mode = selectedMode();
+      const title = $("t-title").value.trim();
+      const scene = mode === "group" ? "" : $("t-scene").value.trim();   // 모둠은 세션 장면 미사용(모둠별 장면)
       $("btn-create").disabled = true; $("create-msg").textContent = "여는 중…";
       try {
-        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: "class" });
+        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: mode });
         if (error) throw error;
         $("create-msg").textContent = "";
         startWatch(data.access_code);
@@ -221,6 +243,8 @@
 
     function renderWatch(board) {
       const sess = board.session || {}, qs = board.questions || [];
+      if (sess.mode === "group") { $("w-counts").hidden = true; renderGroupTiles(board); return; }
+      $("w-counts").hidden = false;
       $("w-scene").textContent = (sess.title ? "📖 " + sess.title + " — " : "") + (sess.scene || "");
       const by = { fact: 0, infer: 0, imagine: 0, none: 0 };
       qs.forEach(q => { by[q.type || "none"]++; });
@@ -228,7 +252,7 @@
       $("c-fact").textContent = by.fact; $("c-infer").textContent = by.infer;
       $("c-imagine").textContent = by.imagine; $("c-none").textContent = by.none;
 
-      const list = $("w-qlist"); list.textContent = "";
+      const list = $("w-qlist"); list.className = "tc-qlist"; list.textContent = "";
       if (!qs.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 학생 질문이 없어요."; list.appendChild(n); return; }
       qs.forEach(q => {
         const row = document.createElement("div"); row.className = "tc-q";
@@ -238,6 +262,34 @@
         row.append(lab, txt);
         if (q.author_nick) { const w = document.createElement("span"); w.className = "who"; w.textContent = q.author_nick; row.appendChild(w); }
         list.appendChild(row);
+      });
+    }
+
+    // 모둠 관전 — 모둠별 타일(장면·질문수·유형·실 완성)
+    function renderGroupTiles(board) {
+      const sess = board.session || {}, qs = board.questions || [], threads = board.threads || [], groups = board.groups || [];
+      $("w-scene").textContent = (sess.title ? "📖 " + sess.title + " · " : "") + "모둠별 활동 — 모둠마다 장면·질문·실을 따로 만들어요";
+      const set = new Set();
+      groups.forEach(g => set.add(g.group_no));
+      qs.forEach(q => { if (q.group_no) set.add(q.group_no); });
+      threads.forEach(t => { if (t.group_no) set.add(t.group_no); });
+      const nums = [...set].sort((a, b) => a - b);
+      const list = $("w-qlist"); list.className = "tc-grouptiles"; list.textContent = "";
+      if (!nums.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 들어온 모둠이 없어요."; list.appendChild(n); return; }
+      nums.forEach(g => {
+        const gq = qs.filter(q => q.group_no === g);
+        const by = { fact: 0, infer: 0, imagine: 0 }; gq.forEach(q => { if (q.type) by[q.type]++; });
+        const scene = (groups.find(x => x.group_no === g) || {}).scene || "";
+        const th = threads.find(t => t.group_no === g), slots = (th && th.slots) || {};
+        const filled = ["fact", "infer", "imagine"].filter(k => slots[k]).length;
+        const tile = document.createElement("div"); tile.className = "tc-grouptile";
+        const h = document.createElement("div"); h.className = "gt-head"; h.textContent = g + " 모둠";
+        const sc = document.createElement("div"); sc.className = "gt-scene"; sc.textContent = scene || "(장면 미정)";
+        const cnt = document.createElement("div"); cnt.className = "gt-counts";
+        cnt.textContent = `질문 ${gq.length} · 사실 ${by.fact} · 추론 ${by.infer} · 상상 ${by.imagine}`;
+        const thr = document.createElement("div"); thr.className = "gt-thread" + (filled === 3 ? " done" : "");
+        thr.textContent = filled === 3 ? "⚙ 한 실 완성!" : "실 " + filled + "/3";
+        tile.append(h, sc, cnt, thr); list.appendChild(tile);
       });
     }
 

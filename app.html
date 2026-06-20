@@ -18,9 +18,16 @@
 
   <!-- 실시간 방 배너 (수업 코드로 들어왔을 때만 표시) -->
   <div class="room-bar" id="roomBar" hidden>
-    🧩 수업 방 · 코드 <b class="rb-code"></b>
-    <span class="rb-hint">— 선생님이 정한 장면으로 질문을 만들고 나눠요</span>
+    🧩 수업 방 · 코드 <b class="rb-code"></b><b class="rb-group"></b>
+    <span class="rb-hint">— 장면으로 질문을 만들고 나눠요</span>
   </div>
+
+  <!-- 모둠 번호 선택 (모둠 모드로 들어왔는데 아직 모둠을 안 골랐을 때) -->
+  <section class="group-picker" id="groupPicker" hidden>
+    <h2>몇 모둠인가요?</h2>
+    <p class="gp-sub">우리 모둠 번호를 골라요. 같은 모둠끼리 함께 질문을 만들고 톱니로 이어요.</p>
+    <div class="gp-grid" id="gp-grid"></div>
+  </section>
 
   <!-- 이어하기 배너 -->
   <div class="resume-bar" id="resumeBar">

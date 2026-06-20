@@ -188,6 +188,28 @@ body.remote .scene-bar input[readonly], body.remote .scene-bar textarea[readonly
 }
 .room-error p { font-size: 1.05em; color: var(--ink); }
 
+/* === 모둠 번호 선택 === */
+.group-picker {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 28px 20px; text-align: center; max-width: 560px; margin: 6vh auto 0;
+}
+.group-picker h2 { font-size: 1.3em; margin-bottom: 8px; }
+.group-picker .gp-sub { color: var(--muted); font-size: .9em; margin-bottom: 20px; }
+.gp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.gp-btn {
+  font: inherit; cursor: pointer; border: 2px solid var(--fact); background: var(--fact-bg);
+  color: var(--fact); border-radius: 14px; padding: 18px 6px; font-weight: 800; font-size: 1.05em;
+}
+.gp-btn:hover, .gp-btn:focus-visible { background: var(--fact); color: #fff; outline: none; }
+/* 모둠 고르는 중엔 본 화면 숨김 */
+body.picking-group .scene-bar,
+body.picking-group .stepper,
+body.picking-group .panel,
+body.picking-group .room-bar,
+body.picking-group .resume-bar { display: none !important; }
+.room-bar .rb-group { color: var(--imagine); }
+@media (max-width: 460px) { .gp-grid { grid-template-columns: repeat(2, 1fr); } }
+
 /* === 홈으로 돌아가기 링크 (앱 상단) === */
 .home-link { display: inline-block; margin-bottom: 10px; color: var(--muted); text-decoration: none; font-weight: 700; font-size: .9em; }
 .home-link:hover, .home-link:focus-visible { color: var(--ink); }

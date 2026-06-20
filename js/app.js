@@ -20,6 +20,9 @@ let selectedId = null; // picking 상태(저장 안 함)
 let isDragging = false; // 드래그 중(폴링 클로버 가드용 — 저장 안 함)
 let appReady = false;  // 초기 렌더 끝나야 true — 복원된 완성 상태에서 로드 시 효과음 울리지 않게
 let soundOn = true;
+let roomCode = null;   // 실시간 방 코드(모둠 선택 저장 키)
+let lastBoard = null;  // 마지막 board(모둠 선택 후 재투영용)
+let bridgeSaveTimer = null; // 모둠 ③ 다리 저장 디바운스
 
 const activeThread = () => S.threads.find(t => t.id === S.activeThreadId) || S.threads[0];
 const qById = id => S.questions.find(q => q.id === id);
@@ -101,7 +104,7 @@ function setType(id, type) {
   save(); render();
 }
 function setSlot(type, id) {
-  if (adapter.remote) return; // ③ 잇기는 실시간(전체) 모드에 없음 — 방어
+  if (adapter.remote && adapter.groupNo == null) return; // 전체 모드엔 ③ 없음
   const th = activeThread();
   if (id) {
     const q = qById(id);
@@ -110,9 +113,16 @@ function setSlot(type, id) {
     TYPES.forEach(k => { if (th.slots[k] === id) th.slots[k] = null; });
   }
   th.slots[type] = id;
+  if (adapter.remote) { adapter.saveThread(th.slots, th.bridges); render(); return; } // 모둠: 실 통째로 저장(slot은 LWW)
   save(); render();
 }
-function setBridge(srcSlot, text) { if (adapter.remote) return; activeThread().bridges[srcSlot] = text; save(); }
+function setBridge(srcSlot, text) {
+  if (adapter.remote && adapter.groupNo == null) return; // 전체 모드엔 ③ 없음
+  const th = activeThread();
+  th.bridges[srcSlot] = text;                            // 낙관적 로컬(입력칸은 그대로)
+  if (adapter.remote) { clearTimeout(bridgeSaveTimer); bridgeSaveTimer = setTimeout(() => adapter.saveThread(th.slots, th.bridges), 500); return; }
+  save();
+}
 function resetAll() { if (adapter.remote) return; S = freshState(); selectedId = null; save(); syncInputs(); render(); }
 
 // JSON 결과 내보내기 / 불러오기 (학생 작성 결과 전체)
@@ -282,6 +292,8 @@ function renderConnect() {
       const inp = document.createElement("input"); inp.type = "text"; inp.placeholder = "다리 한 줄 (선택)";
       inp.value = th.bridges[type] || ""; inp.setAttribute("aria-label", `${KO[type]}에서 다음으로 잇는 다리 한 줄`);
       inp.addEventListener("input", e => setBridge(type, e.target.value));
+      // 모둠 ③: 다 적고 바깥을 누르면 최종 저장(디바운스 취소) + 폴링 재반영
+      inp.addEventListener("blur", () => { if (adapter.remote && adapter.groupNo != null) { clearTimeout(bridgeSaveTimer); adapter.saveThread(activeThread().slots, activeThread().bridges); } });
       br.append(conn, inp); track.appendChild(br);
     }
   });
@@ -431,7 +443,7 @@ document.getElementById("f-scene").addEventListener("blur", async e => {
   if (!adapter.remote) return;
   const v = e.target.value.trim();
   if (!v || (S.scene && S.scene.trim())) return;             // 빈 값·이미 정해진 장면은 전송 안 함
-  const r = await adapter.setScene(v);
+  const r = adapter.groupNo != null ? await adapter.setGroupScene(v) : await adapter.setScene(v);
   if (r && r.ok) announce("장면을 정했어요. 친구들에게도 보여요.");
 });
 
@@ -489,17 +501,63 @@ document.getElementById("btn-png").addEventListener("click", async () => {
   } catch (e) { announce("이미지 저장에 실패했어요. 인쇄를 이용해요."); }
 });
 
-// ===== 실시간(전체 모드) 투영·UI =====
-// 서버 보드(board())를 로컬 상태 S로 투영 — 항상 보드가 진실원천. 학생은 ①②(생성·분류)만, ③은 없음
+// ===== 실시간 투영·UI =====
+// 서버 보드(board())를 로컬 상태 S로 투영 — 항상 보드가 진실원천.
+//  전체(class): 공유 풀·공유 장면, ①②만(③ 숨김).  모둠(group): 내 모둠 것만, ③ 잇기 켜짐.
 function applyBoard(board) {
   const sess = (board && board.session) || {};
   S.title = sess.title || "";
-  S.scene = sess.scene || "";
-  S.questions = (board && Array.isArray(board.questions) ? board.questions : [])
-    .map(q => ({ id: q.id, text: q.text, type: q.type || null }));
-  S.threads = [newThread("th1")];   // ③ 잇기는 전체 모드에 없음
-  S.activeThreadId = "th1";
-  if (S.phase === "connect") S.phase = "classify";
+  const g = adapter.groupNo;
+  const allQ = (board && Array.isArray(board.questions)) ? board.questions : [];
+  if (g != null) {
+    // 모둠 모드 — 내 모둠 질문·실·장면만
+    const grp = (board.groups || []).find(x => x.group_no === g);
+    S.scene = (grp && grp.scene) || "";
+    S.questions = allQ.filter(q => q.group_no === g).map(q => ({ id: q.id, text: q.text, type: q.type || null }));
+    const th = (board.threads || []).find(t => t.group_no === g);
+    S.threads = [ th
+      ? { id: "th1", slots: Object.assign({ fact: null, infer: null, imagine: null }, th.slots || {}),
+                     bridges: Object.assign({ fact: "", infer: "" }, th.bridges || {}) }
+      : newThread("th1") ];
+    S.activeThreadId = "th1";
+  } else {
+    // 전체 모드 — 공유 풀, ③ 없음
+    S.scene = sess.scene || "";
+    S.questions = allQ.map(q => ({ id: q.id, text: q.text, type: q.type || null }));
+    S.threads = [newThread("th1")];
+    S.activeThreadId = "th1";
+    if (S.phase === "connect") S.phase = "classify";
+  }
+}
+function setConnectVisible(show) {
+  const b = document.querySelector('.stepper button[data-phase="connect"]');
+  if (b) b.style.display = show ? "" : "none";
+}
+function bridgeFocused() { const a = document.activeElement; return !!(a && a.closest && a.closest(".bridge")); }
+// 모둠 세션인데 모둠 미선택 → 번호 피커
+function showGroupPicker() {
+  const sec = document.getElementById("groupPicker"), grid = document.getElementById("gp-grid");
+  if (!sec || !grid) return;
+  if (!grid.childElementCount) {
+    for (let n = 1; n <= 8; n++) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "gp-btn"; b.textContent = n + " 모둠";
+      b.addEventListener("click", () => pickGroup(n));
+      grid.appendChild(b);
+    }
+  }
+  document.body.classList.add("picking-group");
+  sec.hidden = false;
+}
+function pickGroup(n) {
+  adapter.setGroup(n);
+  try { localStorage.setItem("gqt:group:" + roomCode, String(n)); } catch (e) {}
+  document.getElementById("groupPicker").hidden = true;
+  document.body.classList.remove("picking-group");
+  const rb = document.getElementById("roomBar");
+  if (rb) { const gt = rb.querySelector(".rb-group"); if (gt) gt.textContent = " · " + n + "모둠"; }
+  if (lastBoard) { applyBoard(lastBoard); syncInputs(); applyRemoteSceneState(); setConnectVisible(true); render(); }
+  announce(n + "모둠으로 들어왔어요.");
 }
 function configureRemoteUI(code) {
   document.body.classList.add("remote");
@@ -538,7 +596,14 @@ function startLocal() {
   // 손글씨/둥근 웹폰트 미리 로드 (첫 PNG 내보내기에서 손글씨 누락 방지 — 실패해도 시스템 글꼴 폴백)
   if (document.fonts && document.fonts.load) { document.fonts.load('400 16px "Gaegu"'); document.fonts.load('400 16px "Jua"'); }
 }
+function readPreGroup(code) {
+  const g = new URLSearchParams(location.search).get("g");
+  const v = g || (() => { try { return localStorage.getItem("gqt:group:" + code); } catch (e) { return null; } })();
+  const n = parseInt(v, 10);
+  return (n >= 1 && n <= 12) ? n : null;   // 모둠 모드가 아니면 onBoard에서 무시됨
+}
 async function startRemote(code) {
+  roomCode = code;
   try {
     if (!window.supabase) await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
     if (!window.GQT_CONFIG) await loadScript("./js/config.js");
@@ -546,11 +611,19 @@ async function startRemote(code) {
   } catch (e) { showRoomError("실시간 기능을 불러오지 못했어요. 인터넷 연결을 확인해 주세요."); return; }
   configureRemoteUI(code);
   const host = {
-    onBoard(board) { applyBoard(board); syncInputs(); applyRemoteSceneState(); render(); },
+    onBoard(board) {
+      lastBoard = board;
+      const isGroup = board.session && board.session.mode === "group";
+      if (!isGroup && adapter.groupNo != null) adapter.setGroup(null);   // 전체 세션이면 (저장된) 모둠 무시
+      if (isGroup && adapter.groupNo == null) { showGroupPicker(); return; }
+      const rbg = document.querySelector("#roomBar .rb-group");
+      if (rbg) rbg.textContent = isGroup ? " · " + adapter.groupNo + "모둠" : "";
+      applyBoard(board); syncInputs(); applyRemoteSceneState(); setConnectVisible(isGroup); render();
+    },
     announce,
-    busy() { return isDragging || selectedId !== null; }
+    busy() { return isDragging || selectedId !== null || bridgeFocused(); }  // 다리 입력 중엔 폴링이 덮지 않게
   };
-  adapter = window.GQT_makeSupabaseAdapter({ code, config: window.GQT_CONFIG, host });
+  adapter = window.GQT_makeSupabaseAdapter({ code, config: window.GQT_CONFIG, host, groupNo: readPreGroup(code) });
   updCounter();
   try { await adapter.init(); }
   catch (e) { showRoomError("잘못되었거나 닫힌 수업 코드예요. 홈에서 코드를 다시 확인해 주세요."); return; }

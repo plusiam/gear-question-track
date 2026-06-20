@@ -5,11 +5,12 @@
 //   GQT_makeSupabaseAdapter({ code, config, host })
 //   host = { onBoard(board), announce(msg), busy() -> bool }   ── board = gear.board() 반환 JSON
 // 패턴: 모든 쓰기는 "RPC → 즉시 poll(force)"로 서버 보드를 진실원천으로 다시 렌더(낙관적 로컬 변경·임시 id 없음).
-window.GQT_makeSupabaseAdapter = function ({ code, config, host }) {
+window.GQT_makeSupabaseAdapter = function ({ code, config, host, groupNo }) {
   const POLL_MS = 2500;
   const client = window.supabase.createClient(config.url, config.anonKey);
   const db = client.schema(config.schema);   // 'gear'
   let timer = null, lastJson = "", pending = null, disposed = false;
+  let gNo = (groupNo != null) ? groupNo : null;   // 모둠 번호(전체 모드는 null). 피커 경로는 setGroup으로 후입력
 
   // RPC가 raise한 한국어 메시지를 그대로 보이게 (잠금·잘못된 코드 등). 없으면 일반 안내
   function msgOf(error) {
@@ -45,6 +46,8 @@ window.GQT_makeSupabaseAdapter = function ({ code, config, host }) {
 
   return {
     remote: true,
+    get groupNo() { return gNo; },
+    setGroup(n) { gNo = n; },
 
     async init() {
       const data = await fetchBoard();          // 코드 검증(throw 시 startRemote가 안내)
@@ -54,7 +57,7 @@ window.GQT_makeSupabaseAdapter = function ({ code, config, host }) {
     },
 
     addQuestion(text) {
-      return write(() => db.rpc("add_question", { p_code: code, p_text: text }).then(ok));
+      return write(() => db.rpc("add_question", { p_code: code, p_text: text, p_group_no: gNo }).then(ok));
     },
     setType(id, type) {
       return write(() => db.rpc("set_question_type", { p_code: code, p_qid: id, p_type: type }).then(ok));
@@ -62,9 +65,17 @@ window.GQT_makeSupabaseAdapter = function ({ code, config, host }) {
     deleteQuestion(id) {
       return write(() => db.rpc("delete_question", { p_code: code, p_qid: id }).then(ok));
     },
-    // 공유 장면 — 교사가 비워둔 장면을 학생이 채움(서버가 '비어 있을 때만' 반영, 먼저 적은 것이 고정)
+    // 공유 장면(전체) — 서버가 '비어 있을 때만' 반영
     setScene(text) {
       return write(() => db.rpc("set_scene", { p_code: code, p_text: text }).then(ok));
+    },
+    // 모둠 장면(모둠) — 내 모둠 장면, '비어 있을 때만' 반영
+    setGroupScene(text) {
+      return write(() => db.rpc("set_group_scene", { p_code: code, p_group_no: gNo, p_text: text }).then(ok));
+    },
+    // 모둠 ③ 잇기 — 모둠당 실 1개 upsert(통째로 — slot은 last-write-wins, 다리 텍스트는 클라 포커스 가드로 보호)
+    saveThread(slots, bridges) {
+      return write(() => db.rpc("save_thread", { p_code: code, p_slots: slots, p_bridges: bridges, p_group_no: gNo }).then(ok));
     },
 
     // 드래그·집기 끝나 idle이 되면 stash해 둔 보드를 반영
