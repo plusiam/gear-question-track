@@ -89,7 +89,7 @@ h1, h2, h3 { margin: 0; }
 }
 .card:focus-visible { outline: 3px solid #111; outline-offset: 2px; }
 .card .c-label { font-size: .76em; font-weight: 800; padding: 1px 8px; border-radius: 999px; color: #fff; white-space: nowrap; }
-.card .c-text { flex: 1; font-size: 1.08em; font-family: "Gaegu", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
+.card .c-text { flex: 1; min-width: 60%; font-size: 1.22em; line-height: 1.4; font-family: "Gaegu", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
 .card .c-del { cursor: pointer; border: none; background: transparent; color: var(--muted); font-size: 1.1em; line-height: 1; padding: 2px 4px; }
 .card[data-type="fact"]    { border-color: var(--fact);    background: var(--fact-bg); }
 .card[data-type="infer"]   { border-color: var(--infer);   background: var(--infer-bg); }
@@ -123,10 +123,11 @@ h1, h2, h3 { margin: 0; }
 .my-thread-row .mt-label { font-weight: 800; font-size: .82em; color: var(--muted); margin-bottom: 4px; }
 .card .used-tag { font-size: .68em; color: var(--muted); margin-left: 6px; white-space: nowrap; }
 .card.used-other { opacity: .6; }
-/* ② 카드 인라인 분류 버튼 */
+/* ② 카드 인라인 분류 버튼 — 질문이 주인공, 버튼은 작은 보조 칩(오른쪽) */
 .card.card-cat { flex-wrap: wrap; }
-.c-classify { width: 100%; display: flex; gap: 6px; margin-top: 2px; }
-.c-cat { flex: 1; font: inherit; cursor: pointer; border: 2px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 4px; font-weight: 800; font-size: .82em; }
+.c-classify { width: 100%; display: flex; gap: 6px; margin-top: 4px; justify-content: flex-end; }
+.c-cat { flex: 0 0 auto; font: inherit; cursor: pointer; border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 12px; font-weight: 700; font-size: .76em; opacity: .85; }
+.c-cat.on { opacity: 1; }
 .c-cat.fact { border-color: var(--fact); color: var(--fact); }
 .c-cat.infer { border-color: var(--infer); color: var(--infer); }
 .c-cat.imagine { border-color: var(--imagine); color: var(--imagine); }

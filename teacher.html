@@ -103,6 +103,16 @@
     .tc-present-col.fact { border-color: var(--fact); } .tc-present-col.infer { border-color: var(--infer); } .tc-present-col.imagine { border-color: var(--imagine); }
     .tc-present-col .tpc-head { font-weight: 800; font-size: 1.1rem; }
     .tc-present-col.fact .tpc-head { color: var(--fact); } .tc-present-col.infer .tpc-head { color: var(--infer); } .tc-present-col.imagine .tpc-head { color: var(--imagine); }
+    /* 전체 관전 카테고리 보드(클릭 가능) + 크게 보기 */
+    .tc-present-col.catboard { font: inherit; cursor: pointer; text-align: left; background: #fff; }
+    .tc-present-col.catboard:hover, .tc-present-col.catboard:focus-visible { box-shadow: 0 4px 14px rgba(0,0,0,.1); outline: none; }
+    .tc-present-title.cat-fact { color: var(--fact); } .tc-present-title.cat-infer { color: var(--infer); } .tc-present-title.cat-imagine { color: var(--imagine); }
+    .tc-catbig { display: grid; gap: 10px; }
+    .tc-catbig .catbig-q { font-size: 1.55rem; line-height: 1.45; padding: 14px 18px; border-radius: 14px; border: 2px solid var(--line);
+      font-family: "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
+    .tc-catbig.fact .catbig-q { background: var(--fact-bg); color: var(--fact); border-color: var(--fact); }
+    .tc-catbig.infer .catbig-q { background: var(--infer-bg); color: var(--infer); border-color: var(--infer); }
+    .tc-catbig.imagine .catbig-q { background: var(--imagine-bg); color: var(--imagine); border-color: var(--imagine); }
     .tpc-q { font-size: 1.05rem; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
     .tpc-q:last-child { border-bottom: none; padding-bottom: 0; }
     .tc-present-thread { margin-top: 18px; }
@@ -270,6 +280,7 @@
     const $ = id => document.getElementById(id);
     let myRole = "teacher", activeCode = null, pollTimer = null, lastJson = "";
     let watchGroupNo = null;   // 모둠 발표 모드: null=타일(한눈에), N=그 모둠 펼쳐 보기
+    let watchCat = null;       // 전체 관전 카테고리 발표: null=보드 3개, 'fact'/'infer'/'imagine'=크게
     let lastBoardData = null;  // 네비(이전/다음)로 다시 그릴 때 쓰는 마지막 board
     function mkBtn(label, fn) { const b = document.createElement("button"); b.className = "btn ghost"; b.type = "button"; b.textContent = label; b.addEventListener("click", fn); return b; }
 
@@ -306,7 +317,7 @@
     $("nav-home").addEventListener("click", () => showHome());   // 어디서든 내 수업(관전 목록)으로
 
     // ===== 교사 홈 — 내 수업 목록 =====
-    async function showHome() { stopPoll(); activeCode = null; watchGroupNo = null; showView("home"); await renderHomeTree(); }
+    async function showHome() { stopPoll(); activeCode = null; watchGroupNo = null; watchCat = null; showView("home"); await renderHomeTree(); }
     // 내 학급·수업 — 학급 블록 안에 그 반 수업을 묶어 표시(qar식). 단독 수업은 미지정 블록
     let myClasses = [];
     function mkClassLink(c) {
@@ -486,7 +497,7 @@
     });
     let watchFails = 0;
     function startWatch(code) {
-      activeCode = code; watchGroupNo = null; watchFails = 0; showView("watch");
+      activeCode = code; watchGroupNo = null; watchCat = null; watchFails = 0; showView("watch");
       $("w-code").textContent = code; lastJson = "";
       pollWatch(); stopPoll(); pollTimer = setInterval(pollWatch, POLL_MS);
     }
@@ -518,16 +529,43 @@
       $("c-total").textContent = qs.length;
       $("c-fact").textContent = by.fact; $("c-infer").textContent = by.infer;
       $("c-imagine").textContent = by.imagine; $("c-none").textContent = by.none;
-      const list = $("w-qlist"); list.className = "tc-qlist"; list.textContent = "";
-      if (!qs.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 학생 질문이 없어요."; list.appendChild(n); return; }
-      qs.forEach(q => {
-        const row = document.createElement("div"); row.className = "tc-q";
-        const lab = document.createElement("span"); lab.className = "lab lab-" + (q.type || "null"); lab.textContent = q.type ? KO[q.type] : "안 나눔";
-        const txt = document.createElement("span"); txt.textContent = q.text;
-        row.append(lab, txt);
-        if (q.author_nick) { const w = document.createElement("span"); w.className = "who"; w.textContent = q.author_nick; row.appendChild(w); }
-        list.appendChild(row);
+      if (watchCat) renderCatDetail(qs, watchCat); else renderCatBoards(qs);
+    }
+    // 전체 관전 — 사실/추론/상상 보드(누르면 전자칠판용으로 크게)
+    function renderCatBoards(qs) {
+      $("w-counts").hidden = false;
+      const list = $("w-qlist"); list.className = "tc-present"; list.textContent = "";
+      const hint = document.createElement("div"); hint.className = "tc-muted"; hint.style.margin = "0 0 8px";
+      hint.textContent = "보드를 누르면 그 질문들을 전자칠판용으로 크게 보여줘요.";
+      list.appendChild(hint);
+      const cols = document.createElement("div"); cols.className = "tc-present-cols";
+      ["fact", "infer", "imagine"].forEach(type => {
+        const col = document.createElement("button"); col.type = "button"; col.className = "tc-present-col catboard " + type;
+        col.addEventListener("click", () => { watchCat = type; renderWatch(lastBoardData); });
+        const h = document.createElement("div"); h.className = "tpc-head"; h.textContent = KO[type] + " " + qs.filter(q => q.type === type).length + "  🔍";
+        col.appendChild(h);
+        const tq = qs.filter(q => q.type === type);
+        if (!tq.length) { const e = document.createElement("div"); e.className = "tc-muted"; e.textContent = "아직 없어요"; col.appendChild(e); }
+        else tq.forEach(q => { const d = document.createElement("div"); d.className = "tpc-q"; d.textContent = q.text; col.appendChild(d); });
+        cols.appendChild(col);
       });
+      list.appendChild(cols);
+    }
+    function gotoCat(i) { const order = ["fact", "infer", "imagine"]; if (i < 0) i = 2; if (i > 2) i = 0; watchCat = order[i]; renderWatch(lastBoardData); }
+    function renderCatDetail(qs, type) {
+      $("w-counts").hidden = true;   // 크게 보기 — 화면 비우고 질문에 집중
+      const order = ["fact", "infer", "imagine"], idx = order.indexOf(type);
+      const list = $("w-qlist"); list.className = "tc-present"; list.textContent = "";
+      const nav = document.createElement("div"); nav.className = "tc-present-nav";
+      const title = document.createElement("div"); title.className = "tc-present-title cat-" + type; title.textContent = KO[type] + " 질문";
+      nav.append(mkBtn("← 이전", () => gotoCat(idx - 1)), title,
+                 mkBtn("다음 →", () => gotoCat(idx + 1)), mkBtn("▦ 한눈에", () => { watchCat = null; renderWatch(lastBoardData); }));
+      list.appendChild(nav);
+      const tq = qs.filter(q => q.type === type);
+      const big = document.createElement("div"); big.className = "tc-catbig " + type;
+      if (!tq.length) { const e = document.createElement("div"); e.className = "tc-muted"; e.textContent = "아직 이 칸 질문이 없어요."; big.appendChild(e); }
+      else tq.forEach(q => { const d = document.createElement("div"); d.className = "catbig-q"; d.textContent = q.text; big.appendChild(d); });
+      list.appendChild(big);
     }
     function renderGroupTiles(board) {
       const sess = board.session || {}, qs = board.questions || [], threads = board.threads || [], groups = board.groups || [];
