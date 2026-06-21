@@ -1,0 +1,136 @@
+<!-- 학급 로비(학생): 학급 코드/QR로 들어와 '오늘 수업'을 골라 입장. 학기 내내 같은 학급으로. 코드 종류 자동 판별(학급=로비/수업=바로 입장) -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>우리 학급 · 톱니질문 트랙</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Jua&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/config.js"></script>
+  <style>
+    .lobby-wrap { max-width: 640px; margin: 5vh auto 0; padding: 0 16px; }
+    .lobby-title { font-family: "Jua", sans-serif; font-size: 1.7rem; margin-bottom: 4px; }
+    .lobby-sub { color: var(--muted); margin-bottom: 18px; }
+    .lobby-sync { font-size: .82em; font-weight: 700; margin-left: 6px; }
+    .lobby-sync.ok { color: var(--imagine); } .lobby-sync.off { color: var(--infer); }
+    .lobby-lessons { display: grid; gap: 10px; }
+    .lobby-lesson { display: flex; align-items: center; gap: 12px; border: 2px solid var(--line); border-radius: 14px; padding: 14px 16px; background: #fff; cursor: pointer; font: inherit; text-align: left; width: 100%; }
+    .lobby-lesson:hover, .lobby-lesson:focus-visible { border-color: var(--fact); box-shadow: 0 4px 12px rgba(0,0,0,.08); outline: none; }
+    .lobby-lesson .ll-main { flex: 1; min-width: 0; }
+    .lobby-lesson .ll-title { font-weight: 800; font-size: 1.1em; }
+    .lobby-lesson .ll-badge { font-size: .72em; font-weight: 800; color: #fff; border-radius: 999px; padding: 2px 9px; }
+    .lobby-lesson .ll-badge.cls { background: var(--fact); } .lobby-lesson .ll-badge.grp { background: var(--imagine); }
+    .lobby-lesson .ll-go { color: var(--muted); font-size: .9em; white-space: nowrap; }
+    .lobby-empty { color: var(--muted); text-align: center; padding: 24px; border: 2px dashed var(--line); border-radius: 14px; }
+    .lobby-join { display: grid; gap: 14px; justify-items: center; padding: 8vh 0; }
+    .lobby-join input { font: inherit; text-align: center; letter-spacing: .2em; text-transform: uppercase; border: 2px solid var(--line); border-radius: 12px; padding: 12px 16px; font-size: 1.2rem; width: 220px; }
+  </style>
+</head>
+<body>
+  <main class="lobby-wrap">
+    <a class="home-link" href="./index.html">← 홈</a>
+
+    <section class="lobby-join" id="lobby-join" hidden>
+      <h1 class="lobby-title">🏫 우리 학급 들어가기</h1>
+      <p class="lobby-sub">선생님께 받은 <b>학급 코드</b>를 넣어요.</p>
+      <form id="join-form" class="lobby-join">
+        <input id="join-code" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" maxlength="6" placeholder="코드 6자" aria-label="학급 코드" />
+        <button class="btn" type="submit">들어가기</button>
+      </form>
+    </section>
+
+    <section id="lobby-main" hidden>
+      <h1 class="lobby-title" id="lobby-class-name"></h1>
+      <p class="lobby-sub">오늘 할 수업을 골라요. <span class="lobby-sync" id="lobby-sync"></span></p>
+      <div class="lobby-lessons" id="lobby-lessons"></div>
+    </section>
+
+    <div class="home-notice" id="lobby-error" hidden></div>
+  </main>
+
+  <script>
+    "use strict";
+    // 학급 코드 → 열린 수업 목록(폴링). 수업 코드면 바로 app.html로. 학생은 로그인 없음(anon RPC)
+    const POLL_MS = 2500;
+    const cfg = window.GQT_CONFIG;
+    const supa = window.supabase.createClient(cfg.url, cfg.anonKey);
+    const db = supa.schema(cfg.schema);
+    const $ = id => document.getElementById(id);
+    const code = (new URLSearchParams(location.search).get("code") || new URLSearchParams(location.search).get("class") || "").toUpperCase();
+    let timer = null, lastJson = "";
+
+    function showError(msg) { const e = $("lobby-error"); e.hidden = false; e.textContent = msg; }
+    function appUrl(c) { return "./app.html?code=" + encodeURIComponent(c); }
+
+    function renderLessons(data) {
+      $("lobby-class-name").textContent = "🏫 " + (data.name || "우리 학급");
+      const box = $("lobby-lessons"); box.textContent = "";
+      const lessons = data.lessons || [];
+      if (!lessons.length) {
+        const n = document.createElement("div"); n.className = "lobby-empty"; n.textContent = "아직 열린 수업이 없어요. 선생님이 수업을 열면 여기에 나와요.";
+        box.appendChild(n); return;
+      }
+      lessons.forEach(l => {
+        const isGroup = l.mode === "group";
+        const row = document.createElement("button"); row.type = "button"; row.className = "lobby-lesson";
+        const main = document.createElement("div"); main.className = "ll-main";
+        const t = document.createElement("div"); t.className = "ll-title"; t.textContent = l.title || "(제목 없음)";
+        const b = document.createElement("div");
+        const badge = document.createElement("span"); badge.className = "ll-badge " + (isGroup ? "grp" : "cls");
+        badge.textContent = isGroup ? "모둠 " + (l.group_count || "") + "개" : "전체";
+        b.appendChild(badge);
+        main.append(t, b);
+        const go = document.createElement("span"); go.className = "ll-go"; go.textContent = "들어가기 →";
+        row.append(main, go);
+        row.addEventListener("click", () => { location.href = appUrl(l.access_code); });
+        box.appendChild(row);
+      });
+    }
+
+    async function pollLobby() {
+      try {
+        const r = await db.rpc("class_lobby", { p_code: code });
+        if (r.error) throw r.error;
+        const sync = $("lobby-sync"); sync.textContent = "● 연결됨"; sync.className = "lobby-sync ok";
+        const s = JSON.stringify(r.data);
+        if (s !== lastJson) { lastJson = s; renderLessons(r.data); }
+      } catch (e) {
+        const sync = $("lobby-sync");
+        if (e && (e.code === "PGRST" || (e.message && e.message.indexOf("찾을 수 없") >= 0))) {
+          if (timer) clearInterval(timer);
+          showError("학급을 찾을 수 없어요. 코드를 다시 확인해 주세요.");
+          $("lobby-main").hidden = true; $("lobby-join").hidden = false;
+        } else if (sync) { sync.textContent = "⚠ 다시 연결 중…"; sync.className = "lobby-sync off"; }
+      }
+    }
+
+    async function start() {
+      if (!code) { $("lobby-join").hidden = false; return; }
+      // 코드 종류 판별 — 수업 코드면 바로 입장
+      try {
+        const r = await db.rpc("resolve_entry", { p_code: code });
+        if (r.error) throw r.error;
+        const type = r.data && r.data.type;
+        if (type === "session") { location.replace(appUrl(code)); return; }
+        if (type !== "class") { $("lobby-join").hidden = false; showError("코드를 찾을 수 없어요. 학급 코드를 확인해 주세요."); return; }
+      } catch (e) { /* 판별 실패 시 로비 시도 */ }
+      $("lobby-main").hidden = false;
+      pollLobby(); timer = setInterval(pollLobby, POLL_MS);
+    }
+
+    $("join-form").addEventListener("submit", e => {
+      e.preventDefault();
+      const c = ($("join-code").value || "").trim().toUpperCase();
+      if (!/^[A-Z2-9]{6}$/.test(c)) { showError("코드는 영문 대문자·숫자 6자예요."); return; }
+      location.href = "./lobby.html?code=" + encodeURIComponent(c);
+    });
+    $("join-code") && $("join-code").addEventListener("input", e => { e.target.value = e.target.value.toUpperCase(); });
+
+    start();
+  </script>
+</body>
+</html>

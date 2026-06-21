@@ -172,8 +172,11 @@
           <span class="tc-muted" style="font-size:.82em">학생이 들어오면 이 개수만큼 모둠을 골라요(1~12).</span>
         </div>
         <div class="tc-field">
-          <label for="t-class">학급(반) <span style="font-weight:400;color:var(--muted)">(선택 — 같은 반 수업끼리 묶여요)</span></label>
-          <input id="t-class" type="text" maxlength="40" placeholder="예: 5-2" style="max-width:220px" />
+          <label for="t-class">학급(반)</label>
+          <select id="t-class" style="max-width:260px; font:inherit; padding:9px 11px; border:2px solid var(--line); border-radius:10px; background:#fff;">
+            <option value="">학급 없음(단독 수업)</option>
+          </select>
+          <span class="tc-muted" style="font-size:.82em">학급을 고르면 그 반 로비에 떠요(학기 내내 같은 코드). 아래 ‘내 학급’에서 만들어요.</span>
         </div>
         <div class="tc-field">
           <label for="t-title">수업 이름(책 제목)</label>
@@ -185,6 +188,13 @@
         </div>
         <button class="btn" id="btn-create" type="button">수업 열기</button>
         <span class="tc-muted" id="create-msg" style="margin-left:10px"></span>
+      </div>
+
+      <div class="tc-card">
+        <h2>내 학급</h2>
+        <p class="tc-muted" style="margin-bottom:10px">학급을 만들면 코드·QR이 나와요. 교실에 게시하면 학생이 <b>학기 내내 같은 학급</b>으로 들어와 그날 연 수업을 골라요.</p>
+        <div class="tc-sessions" id="home-classes"></div>
+        <button class="btn" id="btn-create-class" type="button" style="margin-top:10px">＋ 학급 만들기</button>
       </div>
 
       <div class="tc-card">
@@ -286,7 +296,47 @@
     $("nav-home").addEventListener("click", () => showHome());   // 어디서든 내 수업(관전 목록)으로
 
     // ===== 교사 홈 — 내 수업 목록 =====
-    async function showHome() { stopPoll(); activeCode = null; watchGroupNo = null; showView("home"); await loadMySessions(); }
+    async function showHome() { stopPoll(); activeCode = null; watchGroupNo = null; showView("home"); await loadMyClasses(); await loadMySessions(); }
+    // 내 학급 — 목록(코드·로비링크·QR) + 만들기 폼 드롭다운 채우기
+    let myClasses = [];
+    async function loadMyClasses() {
+      try { const r = await db.rpc("my_classes"); if (r.error) throw r.error; myClasses = r.data || []; }
+      catch (e) { myClasses = []; }
+      // 만들기 폼 드롭다운
+      const sel = $("t-class"); const cur = sel.value;
+      sel.textContent = "";
+      const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "학급 없음(단독 수업)"; sel.appendChild(o0);
+      myClasses.forEach(c => { const o = document.createElement("option"); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
+      if (myClasses.some(c => c.id === cur)) sel.value = cur;
+      // 내 학급 섹션
+      const box = $("home-classes"); box.textContent = "";
+      if (!myClasses.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 학급이 없어요. 아래에서 만들어요."; box.appendChild(n); return; }
+      myClasses.forEach(c => {
+        const row = document.createElement("div"); row.className = "tc-session-row";
+        const main = document.createElement("div"); main.className = "ts-main";
+        const t = document.createElement("div"); t.className = "ts-title"; t.textContent = "🏫 " + c.name;
+        const meta = document.createElement("div"); meta.className = "ts-meta"; meta.textContent = "학급 코드 " + c.access_code + " · 수업 " + c.lessons + "개";
+        main.append(t, meta);
+        const acts = document.createElement("div"); acts.className = "ts-acts";
+        const link = document.createElement("button"); link.className = "btn ghost"; link.type = "button"; link.textContent = "🔗 로비 링크";
+        link.addEventListener("click", async () => {
+          const url = lobbyUrl(c.access_code);
+          try { await navigator.clipboard.writeText(url); link.textContent = "✓ 복사됨"; setTimeout(() => link.textContent = "🔗 로비 링크", 1500); }
+          catch (e) { prompt("교실에 게시할 학급 로비 링크예요:", url); }
+        });
+        const qr = document.createElement("button"); qr.className = "btn ghost"; qr.type = "button"; qr.textContent = "📺 학급 QR";
+        qr.addEventListener("click", () => openQrModal("🏫 " + c.name, c.access_code, lobbyUrl(c.access_code), "학급 QR — 교실에 게시(학기 내내)"));
+        acts.append(link, qr);
+        row.append(main, acts); box.appendChild(row);
+      });
+    }
+    $("btn-create-class").addEventListener("click", async () => {
+      const name = prompt("학급 이름(반) — 예: 5학년 1반", "");
+      if (name === null) return;
+      if (!name.trim()) { showError("학급 이름을 적어요."); return; }
+      try { const r = await db.rpc("create_class", { p_name: name.trim() }); if (r.error) throw r.error; await loadMyClasses(); $("t-class").value = r.data.id; }
+      catch (e) { showError("학급을 만들지 못했어요: " + (e.message || e)); }
+    });
     async function loadMySessions() {
       const box = $("home-sessions"); box.textContent = "불러오는 중…";
       let list;
@@ -296,7 +346,7 @@
       if (!list.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 만든 수업이 없어요. 위에서 새 수업을 열어요."; box.appendChild(n); return; }
       // 학급(반)별로 묶어 표시(모드는 행 배지로). 학급 없으면 맨 뒤
       const groups = {};
-      list.forEach(s => { const k = s.class_label || ""; (groups[k] = groups[k] || []).push(s); });
+      list.forEach(s => { const k = s.class_name || ""; (groups[k] = groups[k] || []).push(s); });
       Object.keys(groups)
         .sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b, "ko")))
         .forEach(k => renderSessionSection(box, k ? ("🏫 " + k) : "🗂 학급 미지정", groups[k]));
@@ -348,14 +398,12 @@
         try { const r = await db.rpc("delete_session", { p_id: s.id }); if (r.error) throw r.error; await loadMySessions(); }
         catch (e) { del.disabled = false; showError("삭제하지 못했어요: " + (e.message || e)); }
       });
-      const rename = document.createElement("button"); rename.className = "btn ghost ts-manage"; rename.type = "button"; rename.textContent = "✎ 고치기";
+      const rename = document.createElement("button"); rename.className = "btn ghost ts-manage"; rename.type = "button"; rename.textContent = "✎ 이름";
       rename.addEventListener("click", async () => {
         const nt = prompt("수업 이름(책 제목)", s.title || "");
         if (nt === null) return;
-        const nc = prompt("학급(반) — 비우면 없음", s.class_label || "");
-        if (nc === null) return;
         rename.disabled = true;
-        try { const r = await db.rpc("rename_session", { p_id: s.id, p_title: nt.trim(), p_class_label: nc.trim() || null }); if (r.error) throw r.error; await loadMySessions(); }
+        try { const r = await db.rpc("rename_session", { p_id: s.id, p_title: nt.trim() }); if (r.error) throw r.error; await loadMySessions(); }
         catch (e) { rename.disabled = false; showError("바꾸지 못했어요: " + (e.message || e)); }
       });
       acts.append(link, qr, rename, toggle, del);
@@ -364,23 +412,25 @@
     }
     // QR 라이브러리는 누를 때만 로드(가벼움 유지). 실패 시 링크로 폴백
     function loadScript(src) { return new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error("load fail")); document.head.appendChild(sc); }); }
-    async function openQr(s) {
-      const url = studentUrl(s.access_code);
-      if (!window.QRCode) { try { await loadScript("https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"); } catch (e) { prompt("학생 링크(QR을 못 불러왔어요):", url); return; } }
+    function openQr(s) {   // 수업 QR(학생 바로 입장)
+      openQrModal((s.title || "수업") + (s.mode === "group" ? " · 모둠 " + (s.group_count || "") + "개" : ""), s.access_code, studentUrl(s.access_code), "학생 QR — 이 수업으로 바로");
+    }
+    async function openQrModal(title, code, url, hint) {   // 학급·수업 공용 QR 모달
+      if (!window.QRCode) { try { await loadScript("https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"); } catch (e) { prompt(title + " 링크(QR을 못 불러왔어요):", url); return; } }
       const ov = document.createElement("div"); ov.className = "qr-overlay";
       const box = document.createElement("div"); box.className = "qr-box";
-      const ttl = document.createElement("div"); ttl.className = "qr-title"; ttl.textContent = (s.title || "수업") + (s.mode === "group" ? " · 모둠 " + (s.group_count || "") + "개" : "");
-      const codeEl = document.createElement("div"); codeEl.className = "qr-code"; codeEl.textContent = s.access_code;
+      const ttl = document.createElement("div"); ttl.className = "qr-title"; ttl.textContent = title;
+      const codeEl = document.createElement("div"); codeEl.className = "qr-code"; codeEl.textContent = code;
       const qrDiv = document.createElement("div");
       const urlEl = document.createElement("div"); urlEl.className = "qr-url"; urlEl.textContent = url;
-      const hint = document.createElement("div"); hint.className = "tc-muted"; hint.textContent = "전자칠판에 띄워 학생이 스캔하거나, 코드·링크로 들어와요.";
+      const hintEl = document.createElement("div"); hintEl.className = "tc-muted"; hintEl.textContent = hint || "전자칠판에 띄워 스캔하거나, 코드·링크로 들어와요.";
       const close = document.createElement("button"); close.className = "btn"; close.type = "button"; close.textContent = "닫기";
       const escClose = e => { if (e.key === "Escape") doClose(); };
       function doClose() { ov.remove(); document.removeEventListener("keydown", escClose); }
       close.addEventListener("click", doClose);
       ov.addEventListener("click", e => { if (e.target === ov) doClose(); });
       document.addEventListener("keydown", escClose);
-      box.append(ttl, codeEl, qrDiv, urlEl, hint, close);
+      box.append(ttl, codeEl, qrDiv, urlEl, hintEl, close);
       ov.appendChild(box); document.body.appendChild(ov);
       try { new window.QRCode(qrDiv, { text: url, width: 300, height: 300 }); } catch (e) { qrDiv.textContent = "(QR 생성 실패 — 위 링크/코드를 이용해요)"; }
     }
@@ -392,10 +442,10 @@
     $("btn-create").addEventListener("click", async () => {
       const mode = selectedMode(), title = $("t-title").value.trim(), scene = mode === "group" ? "" : $("t-scene").value.trim();
       const count = mode === "group" ? Math.max(1, Math.min(12, parseInt($("t-groupcount").value, 10) || 4)) : null;
-      const classLabel = $("t-class").value.trim() || null;
+      const classId = $("t-class").value || null;
       $("btn-create").disabled = true; $("create-msg").textContent = "여는 중…";
       try {
-        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: mode, p_group_count: count, p_class_label: classLabel });
+        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: mode, p_group_count: count, p_class_id: classId });
         if (error) throw error;
         $("create-msg").textContent = ""; $("t-title").value = ""; $("t-scene").value = "";
         startWatch(data.access_code);   // 만들면 바로 그 수업 관전으로
@@ -405,6 +455,7 @@
 
     // ===== 수업 상세(관전) =====
     function studentUrl(code) { return location.origin + location.pathname.replace(/teacher\.html$/, "app.html") + "?code=" + code; }
+    function lobbyUrl(code) { return location.origin + location.pathname.replace(/teacher\.html$/, "lobby.html") + "?code=" + code; }
     $("btn-watch-back").addEventListener("click", () => showHome());
     $("btn-copy-link").addEventListener("click", async () => {
       const url = studentUrl(activeCode);
