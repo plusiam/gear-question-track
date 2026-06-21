@@ -149,6 +149,40 @@ function importJsonFile(file) {
   r.onerror = () => announce("파일을 읽지 못했어요.");
   r.readAsText(file);
 }
+// 합쳐 불러오기 — 여러 결과 파일의 질문을 현재 풀에 이어붙임(새 id로 충돌 방지, 분류는 유지).
+// 여러 모둠·차시·친구 결과를 수합해 다시 분류하는 '종합 작업대'(개인 모드).
+function mergeJsonText(text) {
+  let o; try { o = JSON.parse(text); } catch (e) { return 0; }
+  if (!o || o.version !== 1 || !Array.isArray(o.questions)) return 0;
+  let n = 0;
+  o.questions.forEach(q => {
+    if (!q || typeof q.text !== "string" || !q.text.trim()) return;
+    const type = ["fact", "infer", "imagine"].includes(q.type) ? q.type : null;
+    S.questions.push({ id: "q" + (++S.seq), text: q.text, type });
+    n++;
+  });
+  return n;
+}
+function mergeJsonFiles(files) {
+  if (adapter.remote) { announce("실시간 방에서는 합쳐 불러오기를 쓸 수 없어요. ‘혼자 해 보기’에서 수합해요."); return; }
+  const list = Array.from(files || []);
+  if (!list.length) return;
+  let done = 0, total = 0, failed = 0;
+  const finish = () => {
+    if (++done < list.length) return;
+    if (total > 0) S.phase = "classify";   // 합친 뒤 바로 다시 분류로
+    clearSelect(); save(); syncInputs(); updCounter(); render();
+    let msg = total > 0 ? ("질문 " + total + "개를 합쳐 불러왔어요(파일 " + list.length + "개). 이제 다시 나눠 봐요.") : "합칠 질문이 없었어요.";
+    if (failed) msg += " — " + failed + "개 파일은 형식이 안 맞아 건너뛰었어요.";
+    announce(msg);
+  };
+  list.forEach(file => {
+    const r = new FileReader();
+    r.onload = () => { const n = mergeJsonText(r.result); if (!n) failed++; total += n; finish(); };
+    r.onerror = () => { failed++; finish(); };
+    r.readAsText(file);
+  });
+}
 
 // ===== 보조 =====
 let toastTimer = null;
@@ -652,6 +686,9 @@ document.getElementById("btn-export-json").addEventListener("click", downloadJso
 const fileInput = document.getElementById("file-json");
 document.getElementById("btn-import-json").addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", e => { const f = e.target.files[0]; if (f) importJsonFile(f); e.target.value = ""; });
+const mergeInput = document.getElementById("file-merge");
+document.getElementById("btn-merge-json").addEventListener("click", () => mergeInput.click());
+mergeInput.addEventListener("change", e => { mergeJsonFiles(e.target.files); e.target.value = ""; });
 
 // 인쇄 / 이미지 저장
 document.getElementById("btn-print").addEventListener("click", () => window.print());
@@ -737,7 +774,7 @@ function configureRemoteUI(code) {
   document.body.classList.add("remote");
   const cbtn = document.querySelector('.stepper button[data-phase="connect"]');
   if (cbtn) cbtn.style.display = "none";                          // ③ 잇기 숨김
-  ["btn-reset", "btn-import-json"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = "none"; });
+  ["btn-reset", "btn-import-json", "btn-merge-json"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = "none"; });
   const ft = document.getElementById("f-title");                 // 제목은 교사 소유 — 학생은 못 고침(안내문도 편집 유도 제거)
   ft.readOnly = true; ft.placeholder = "선생님이 정한 책 제목";
   applyRemoteSceneState();                                       // 장면은 비었을 때만 학생 편집(이후 board 따라 갱신)
@@ -823,4 +860,4 @@ const ROOM = (window.GQT_ROOM_CODE || "").trim().toUpperCase();
 if (ROOM) startRemote(ROOM); else startLocal();
 
 // 테스트 훅 (상태 척추 검증용)
-window.GQT = { get S() { return S; }, addQuestion, deleteQuestion, setType, setSlot, setBridge, setTitle, setScene, setPhase, resetAll, save, loadSaved, serialize: () => JSON.stringify(S), importJsonText };
+window.GQT = { get S() { return S; }, addQuestion, deleteQuestion, setType, setSlot, setBridge, setTitle, setScene, setPhase, resetAll, save, loadSaved, serialize: () => JSON.stringify(S), importJsonText, mergeJsonText, render };

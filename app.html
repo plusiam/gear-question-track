@@ -44,9 +44,11 @@
       <input id="f-title" type="text" maxlength="80" placeholder="예: 연우의 도전 (어떤 책·글이든 적어요)" />
       <button class="btn ghost" id="btn-export-json" type="button">💾 결과 저장</button>
       <button class="btn ghost" id="btn-import-json" type="button">📂 불러오기</button>
+      <button class="btn ghost" id="btn-merge-json" type="button">📥 합쳐 불러오기</button>
       <button class="btn ghost" id="btn-sound" type="button" aria-pressed="true">🔊 소리</button>
       <button class="btn ghost" id="btn-reset" type="button">↺ 전부 비우기</button>
       <input type="file" id="file-json" accept="application/json,.json" hidden />
+      <input type="file" id="file-merge" accept="application/json,.json" multiple hidden />
     </div>
     <div class="row">
       <label for="f-scene">장면</label>
