@@ -40,7 +40,17 @@
     .tc-sessions { display: grid; gap: 8px; }
     .tc-session-row { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; flex-wrap: wrap; }
     .tc-session-row .ts-main { flex: 1; min-width: 160px; }
-    .tc-session-row .ts-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tc-session-row .ts-acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .ts-main.ts-click { cursor: pointer; border-radius: 8px; padding: 4px 6px; margin: -4px -6px; }
+    .ts-main.ts-click:hover, .ts-main.ts-click:focus-visible { background: #f3f4f8; outline: none; }
+    .ts-go { color: var(--muted); font-size: .82em; font-weight: 400; }
+    .ts-acts .ts-manage { color: var(--muted); font-size: .82em; padding: 6px 10px; }
+    /* QR 띄우기(전자칠판 투영) */
+    .qr-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+    .qr-box { background: #fff; border-radius: 16px; padding: 24px 28px; text-align: center; display: grid; gap: 12px; justify-items: center; max-width: 92vw; }
+    .qr-box .qr-title { font-weight: 800; font-size: 1.1rem; }
+    .qr-box .qr-code { font-size: 2.2rem; font-weight: 800; letter-spacing: .2em; color: var(--fact); }
+    .qr-box .qr-url { font-size: .8em; color: var(--muted); word-break: break-all; max-width: 320px; }
     .tc-session-row .ts-title { font-weight: 700; }
     .ts-badge { font-size: .72em; font-weight: 800; padding: 2px 9px; border-radius: 999px; color: #fff; }
     .ts-badge.cls { background: var(--fact); }
@@ -295,34 +305,69 @@
     function makeSessionRow(s) {
       const isGroup = s.mode === "group";
       const row = document.createElement("div"); row.className = "tc-session-row";
-      const main = document.createElement("div"); main.className = "ts-main";
+      // 메인 영역 클릭 = 관전(빠른 진입)
+      const main = document.createElement("div"); main.className = "ts-main ts-click"; main.tabIndex = 0; main.setAttribute("role", "button");
+      main.setAttribute("aria-label", (s.title || "수업") + " 관전");
       const t = document.createElement("div"); t.className = "ts-title";
       const badge = document.createElement("span"); badge.className = "ts-badge " + (isGroup ? "grp" : "cls");
       badge.textContent = isGroup ? "모둠 " + (s.group_count || "?") + "개" : "전체";
       const ttl = document.createElement("span"); ttl.textContent = " " + (s.title || "(제목 없음)");
-      t.append(badge, ttl);
+      const go = document.createElement("span"); go.className = "ts-go"; go.textContent = " ▸ 관전";
+      t.append(badge, ttl, go);
       const meta = document.createElement("div"); meta.className = "ts-meta";
       meta.textContent = "코드 " + s.access_code + " · 질문 " + s.questions + (s.status === "closed" ? " · 닫힘" : "");
       main.append(t, meta);
-      const btn = document.createElement("button"); btn.className = "btn ghost"; btn.type = "button"; btn.textContent = "👁 관전";
-      btn.addEventListener("click", () => startWatch(s.access_code));
-      const toggle = document.createElement("button"); toggle.className = "btn ghost"; toggle.type = "button";
+      main.addEventListener("click", () => startWatch(s.access_code));
+      main.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); startWatch(s.access_code); } });
+
+      const acts = document.createElement("div"); acts.className = "ts-acts";
+      const link = document.createElement("button"); link.className = "btn ghost"; link.type = "button"; link.textContent = "🔗 링크";
+      link.addEventListener("click", async () => {
+        const url = studentUrl(s.access_code);
+        try { await navigator.clipboard.writeText(url); link.textContent = "✓ 복사됨"; setTimeout(() => link.textContent = "🔗 링크", 1500); }
+        catch (e) { prompt("학생에게 줄 링크예요:", url); }
+      });
+      const qr = document.createElement("button"); qr.className = "btn ghost"; qr.type = "button"; qr.textContent = "📺 QR";
+      qr.addEventListener("click", () => openQr(s));
+      const toggle = document.createElement("button"); toggle.className = "btn ghost ts-manage"; toggle.type = "button";
       toggle.textContent = s.status === "closed" ? "열기" : "닫기";
       toggle.addEventListener("click", async () => {
         toggle.disabled = true;
         try { const r = await db.rpc("set_session_status", { p_id: s.id, p_status: s.status === "closed" ? "open" : "closed" }); if (r.error) throw r.error; await loadMySessions(); }
         catch (e) { toggle.disabled = false; showError("바꾸지 못했어요: " + (e.message || e)); }
       });
-      const del = document.createElement("button"); del.className = "btn ghost"; del.type = "button"; del.textContent = "🗑 삭제"; del.style.color = "var(--infer)";
+      const del = document.createElement("button"); del.className = "btn ghost ts-manage"; del.type = "button"; del.textContent = "🗑"; del.title = "삭제";
       del.addEventListener("click", async () => {
         if (!confirm("이 수업을 지울까요? 학생 질문·실까지 모두 사라지고 되돌릴 수 없어요.")) return;
         del.disabled = true;
         try { const r = await db.rpc("delete_session", { p_id: s.id }); if (r.error) throw r.error; await loadMySessions(); }
         catch (e) { del.disabled = false; showError("삭제하지 못했어요: " + (e.message || e)); }
       });
-      const acts = document.createElement("div"); acts.className = "ts-acts"; acts.append(btn, toggle, del);
+      acts.append(link, qr, toggle, del);
       row.append(main, acts);
       return row;
+    }
+    // QR 라이브러리는 누를 때만 로드(가벼움 유지). 실패 시 링크로 폴백
+    function loadScript(src) { return new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error("load fail")); document.head.appendChild(sc); }); }
+    async function openQr(s) {
+      const url = studentUrl(s.access_code);
+      if (!window.QRCode) { try { await loadScript("https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"); } catch (e) { prompt("학생 링크(QR을 못 불러왔어요):", url); return; } }
+      const ov = document.createElement("div"); ov.className = "qr-overlay";
+      const box = document.createElement("div"); box.className = "qr-box";
+      const ttl = document.createElement("div"); ttl.className = "qr-title"; ttl.textContent = (s.title || "수업") + (s.mode === "group" ? " · 모둠 " + (s.group_count || "") + "개" : "");
+      const codeEl = document.createElement("div"); codeEl.className = "qr-code"; codeEl.textContent = s.access_code;
+      const qrDiv = document.createElement("div");
+      const urlEl = document.createElement("div"); urlEl.className = "qr-url"; urlEl.textContent = url;
+      const hint = document.createElement("div"); hint.className = "tc-muted"; hint.textContent = "전자칠판에 띄워 학생이 스캔하거나, 코드·링크로 들어와요.";
+      const close = document.createElement("button"); close.className = "btn"; close.type = "button"; close.textContent = "닫기";
+      const escClose = e => { if (e.key === "Escape") doClose(); };
+      function doClose() { ov.remove(); document.removeEventListener("keydown", escClose); }
+      close.addEventListener("click", doClose);
+      ov.addEventListener("click", e => { if (e.target === ov) doClose(); });
+      document.addEventListener("keydown", escClose);
+      box.append(ttl, codeEl, qrDiv, urlEl, hint, close);
+      ov.appendChild(box); document.body.appendChild(ov);
+      try { new window.QRCode(qrDiv, { text: url, width: 300, height: 300 }); } catch (e) { qrDiv.textContent = "(QR 생성 실패 — 위 링크/코드를 이용해요)"; }
     }
 
     // 모드 전환 + 수업 만들기
