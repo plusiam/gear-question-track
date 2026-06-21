@@ -351,6 +351,8 @@ function renderThreadTabs() {
 function usedInOtherThreads(qid) {
   return S.threads.some(t => t.id !== S.activeThreadId && TYPES.some(k => t.slots[k] === qid));
 }
+// 다리 입력칸(textarea) 높이 자동 맞춤 — 긴 문장도 줄바꿈으로 전체 보이게
+function autosize(el) { el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 140) + "px"; }
 // 한 실을 사실→추론→상상 체인으로(다리 포함) — 완성 요약·내 실 모아보기 공용
 function chainEl(slots, bridges) {
   const wrap = document.createElement("div"); wrap.className = "chain";
@@ -405,16 +407,17 @@ function renderConnect() {
     if (i < TYPES.length - 1) {
       const br = document.createElement("div"); br.className = "bridge";
       const conn = document.createElement("div"); conn.className = "conn"; conn.textContent = "↳ " + CONNECTOR[type];
-      const inp = document.createElement("input"); inp.type = "text"; inp.placeholder = "다리 한 줄 (선택)";
+      const inp = document.createElement("textarea"); inp.rows = 1; inp.placeholder = "다리 한 줄 (선택)";
       inp.dataset.bridge = type;   // 재그리기 후 포커스·커서 복원용
       inp.value = th.bridges[type] || ""; inp.setAttribute("aria-label", `${KO[type]}에서 다음으로 잇는 다리 한 줄`);
-      inp.addEventListener("input", e => setBridge(type, e.target.value));
+      inp.addEventListener("input", e => { setBridge(type, e.target.value); autosize(e.target); });
       // 모둠 ③: 다 적고 바깥을 누르면 최종 저장(디바운스 취소) + 폴링 재반영
       inp.addEventListener("blur", () => { const t = activeThread(); if (adapter.remote && t) { clearTimeout(bridgeSaveTimer); adapter.saveThread(S.activeThreadId, t.slots, t.bridges); } });
       br.append(conn, inp); track.appendChild(br);
     }
   });
   // 완성 배너 + 효과
+  track.querySelectorAll(".bridge textarea").forEach(autosize);   // 기존 다리 문장 높이 맞춤
   const complete = TYPES.every(t => th.slots[t]);
   const banner = document.getElementById("doneBanner");
   banner.classList.toggle("show", complete);
@@ -427,6 +430,9 @@ function renderConnect() {
       summary.hidden = false; summary.textContent = "";
       const lab = document.createElement("span"); lab.className = "ts-done-lab"; lab.textContent = "✅ 한 실 완성 ";
       summary.append(lab, chainEl(th.slots, th.bridges));
+      const more = document.createElement("button"); more.type = "button"; more.className = "btn ghost ts-more"; more.textContent = "🧵 다른 갈래로 새 실";
+      more.addEventListener("click", addThread);
+      summary.appendChild(more);
     } else { summary.hidden = true; summary.textContent = ""; }
   }
 
@@ -628,7 +634,7 @@ async function doAdd() {
   else announceVal(r.why);
 }
 document.getElementById("btn-add").addEventListener("click", doAdd);
-newq.addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doAdd(); } });
+newq.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doAdd(); } });   // Enter로 바로 추가(Shift+Enter=줄바꿈)
 
 document.querySelectorAll(".stepper button").forEach(b => b.addEventListener("click", () => { clearSelect(); setPhase(b.dataset.phase); }));
 document.getElementById("btn-reset").addEventListener("click", () => { if (confirm("적은 내용을 모두 지우고 새로 시작할까요?")) { resetAll(); announce("새로 시작해요."); } });

@@ -18,7 +18,7 @@ body.big { font-size: 1.3rem; }
 h1, h2, h3 { margin: 0; }
 
 /* 입력은 읽기 편한 본문체로 (긴 글 타이핑 편의 — Jua 상속 무시) */
-.scene-bar input, .scene-bar textarea, .add-row textarea, #f-newq, .bridge input {
+.scene-bar input, .scene-bar textarea, .add-row textarea, #f-newq {
   font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
 }
 
@@ -107,6 +107,7 @@ h1, h2, h3 { margin: 0; }
 .thread-summary { background: var(--imagine-bg); border: 2px solid var(--imagine); border-radius: 12px; padding: 12px 14px; margin: 10px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .thread-summary[hidden] { display: none; }   /* display:flex가 hidden 속성을 덮지 않게 */
 .thread-summary .ts-done-lab { font-weight: 800; color: var(--imagine); }
+.thread-summary .ts-more { font-size: .85em; padding: 6px 12px; }
 .chain { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chain-seg { padding: 4px 10px; border-radius: 999px; font-size: .95em; font-family: "Gaegu", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
 .chain-seg.lab-bg-fact { background: var(--fact-bg); color: var(--fact); }
@@ -172,9 +173,10 @@ h1, h2, h3 { margin: 0; }
 .track { display: flex; align-items: stretch; gap: 6px; flex-wrap: nowrap; overflow-x: auto; margin-bottom: 16px; }
 .socket { flex: 1 1 0; min-width: 150px; }
 .socket.snapped .gear { transform: rotate(360deg); }
-.bridge { align-self: center; display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+.bridge { align-self: center; display: flex; flex-direction: column; gap: 4px; min-width: 170px; }
 .bridge .conn { color: var(--muted); font-size: .76em; text-align: center; }
-.bridge input { font-size: .85em; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.bridge textarea { width: 100%; font-size: .85em; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; resize: none; overflow: hidden; min-height: 34px; line-height: 1.35;
+  font-family: "Gaegu", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
 .done-banner { display: none; text-align: center; font-weight: 800; color: var(--imagine); background: var(--imagine-bg); border-radius: 12px; padding: 12px; margin-top: 4px; }
 .done-banner.show { display: block; }
 .pool .pool-cols { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
@@ -211,7 +213,7 @@ h1, h2, h3 { margin: 0; }
   body * { visibility: hidden !important; }
   #export-target, #export-target * { visibility: visible !important; }
   #export-target { position: absolute; left: 0; top: 0; width: 100%; }
-  .bridge input { border: 1px solid #ccc; }
+  .bridge textarea { border: 1px solid #ccc; }
   .toast { display: none !important; }
 }
 
