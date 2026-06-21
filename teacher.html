@@ -172,7 +172,11 @@
           <span class="tc-muted" style="font-size:.82em">학생이 들어오면 이 개수만큼 모둠을 골라요(1~12).</span>
         </div>
         <div class="tc-field">
-          <label for="t-title">책 제목</label>
+          <label for="t-class">학급(반) <span style="font-weight:400;color:var(--muted)">(선택 — 같은 반 수업끼리 묶여요)</span></label>
+          <input id="t-class" type="text" maxlength="40" placeholder="예: 5-2" style="max-width:220px" />
+        </div>
+        <div class="tc-field">
+          <label for="t-title">수업 이름(책 제목)</label>
           <input id="t-title" type="text" maxlength="80" placeholder="예: 연우의 도전" />
         </div>
         <div class="tc-field" id="scene-field">
@@ -290,11 +294,12 @@
       catch (e) { box.textContent = "수업을 불러오지 못했어요."; return; }
       box.textContent = "";
       if (!list.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 만든 수업이 없어요. 위에서 새 수업을 열어요."; box.appendChild(n); return; }
-      // 전체/모둠 모드로 분류해 섹션별로 표시
-      const cls = list.filter(s => s.mode !== "group");
-      const grp = list.filter(s => s.mode === "group");
-      renderSessionSection(box, "📖 전체 모드", cls);
-      renderSessionSection(box, "🧩 모둠 모드", grp);
+      // 학급(반)별로 묶어 표시(모드는 행 배지로). 학급 없으면 맨 뒤
+      const groups = {};
+      list.forEach(s => { const k = s.class_label || ""; (groups[k] = groups[k] || []).push(s); });
+      Object.keys(groups)
+        .sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b, "ko")))
+        .forEach(k => renderSessionSection(box, k ? ("🏫 " + k) : "🗂 학급 미지정", groups[k]));
     }
     function renderSessionSection(box, label, items) {
       if (!items.length) return;   // 비어 있는 분류는 생략
@@ -343,7 +348,17 @@
         try { const r = await db.rpc("delete_session", { p_id: s.id }); if (r.error) throw r.error; await loadMySessions(); }
         catch (e) { del.disabled = false; showError("삭제하지 못했어요: " + (e.message || e)); }
       });
-      acts.append(link, qr, toggle, del);
+      const rename = document.createElement("button"); rename.className = "btn ghost ts-manage"; rename.type = "button"; rename.textContent = "✎ 고치기";
+      rename.addEventListener("click", async () => {
+        const nt = prompt("수업 이름(책 제목)", s.title || "");
+        if (nt === null) return;
+        const nc = prompt("학급(반) — 비우면 없음", s.class_label || "");
+        if (nc === null) return;
+        rename.disabled = true;
+        try { const r = await db.rpc("rename_session", { p_id: s.id, p_title: nt.trim(), p_class_label: nc.trim() || null }); if (r.error) throw r.error; await loadMySessions(); }
+        catch (e) { rename.disabled = false; showError("바꾸지 못했어요: " + (e.message || e)); }
+      });
+      acts.append(link, qr, rename, toggle, del);
       row.append(main, acts);
       return row;
     }
@@ -377,9 +392,10 @@
     $("btn-create").addEventListener("click", async () => {
       const mode = selectedMode(), title = $("t-title").value.trim(), scene = mode === "group" ? "" : $("t-scene").value.trim();
       const count = mode === "group" ? Math.max(1, Math.min(12, parseInt($("t-groupcount").value, 10) || 4)) : null;
+      const classLabel = $("t-class").value.trim() || null;
       $("btn-create").disabled = true; $("create-msg").textContent = "여는 중…";
       try {
-        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: mode, p_group_count: count });
+        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: mode, p_group_count: count, p_class_label: classLabel });
         if (error) throw error;
         $("create-msg").textContent = ""; $("t-title").value = ""; $("t-scene").value = "";
         startWatch(data.access_code);   // 만들면 바로 그 수업 관전으로
