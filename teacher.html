@@ -38,6 +38,14 @@
 
     /* 내 수업 목록 */
     .tc-sessions { display: grid; gap: 8px; }
+    /* 학급 블록(학급 → 그 아래 수업) */
+    .tc-classblock { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; background: #fbfbfd; }
+    .tc-classhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+    .tc-classhead .tch-main { flex: 1; min-width: 150px; }
+    .tc-classhead .tch-name { font-weight: 800; font-size: 1.05em; }
+    .tc-classhead .tch-meta { color: var(--muted); font-size: .82em; }
+    .tc-classlessons { display: grid; gap: 8px; padding-left: 12px; border-left: 3px solid var(--line); margin-left: 2px; }
+    .tc-classlessons .tc-session-row { background: #fff; }
     .tc-session-row { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; flex-wrap: wrap; }
     .tc-session-row .ts-main { flex: 1; min-width: 160px; }
     .tc-session-row .ts-acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -198,15 +206,10 @@
       </div>
 
       <div class="tc-card">
-        <h2>내 학급</h2>
-        <p class="tc-muted" style="margin-bottom:10px">학급을 만들면 코드·QR이 나와요. 교실에 게시하면 학생이 <b>학기 내내 같은 학급</b>으로 들어와 그날 연 수업을 골라요.</p>
-        <div class="tc-sessions" id="home-classes"></div>
-        <button class="btn" id="btn-create-class" type="button" style="margin-top:10px">＋ 학급 만들기</button>
-      </div>
-
-      <div class="tc-card">
-        <h2>내 수업</h2>
-        <div class="tc-sessions" id="home-sessions"></div>
+        <h2>내 학급 · 수업</h2>
+        <p class="tc-muted" style="margin-bottom:10px">학급 아래에 그 반 수업이 모여요. 학급 코드·QR을 교실에 게시하면 학생이 <b>학기 내내 같은 학급</b>으로 들어와 그날 연 수업을 골라요.</p>
+        <div id="home-tree"></div>
+        <button class="btn" id="btn-create-class" type="button" style="margin-top:12px">＋ 학급 만들기</button>
       </div>
 
       <div style="text-align:center">
@@ -303,67 +306,78 @@
     $("nav-home").addEventListener("click", () => showHome());   // 어디서든 내 수업(관전 목록)으로
 
     // ===== 교사 홈 — 내 수업 목록 =====
-    async function showHome() { stopPoll(); activeCode = null; watchGroupNo = null; showView("home"); await loadMyClasses(); await loadMySessions(); }
-    // 내 학급 — 목록(코드·로비링크·QR) + 만들기 폼 드롭다운 채우기
+    async function showHome() { stopPoll(); activeCode = null; watchGroupNo = null; showView("home"); await renderHomeTree(); }
+    // 내 학급·수업 — 학급 블록 안에 그 반 수업을 묶어 표시(qar식). 단독 수업은 미지정 블록
     let myClasses = [];
-    async function loadMyClasses() {
-      try { const r = await db.rpc("my_classes"); if (r.error) throw r.error; myClasses = r.data || []; }
-      catch (e) { myClasses = []; }
-      // 만들기 폼 드롭다운
-      const sel = $("t-class"); const cur = sel.value;
-      sel.textContent = "";
-      const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "학급 없음(단독 수업)"; sel.appendChild(o0);
-      myClasses.forEach(c => { const o = document.createElement("option"); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
-      if (myClasses.some(c => c.id === cur)) sel.value = cur;
-      // 내 학급 섹션
-      const box = $("home-classes"); box.textContent = "";
-      if (!myClasses.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 학급이 없어요. 아래에서 만들어요."; box.appendChild(n); return; }
-      myClasses.forEach(c => {
-        const row = document.createElement("div"); row.className = "tc-session-row";
-        const main = document.createElement("div"); main.className = "ts-main";
-        const t = document.createElement("div"); t.className = "ts-title"; t.textContent = "🏫 " + c.name;
-        const meta = document.createElement("div"); meta.className = "ts-meta"; meta.textContent = "학급 코드 " + c.access_code + " · 수업 " + c.lessons + "개";
-        main.append(t, meta);
-        const acts = document.createElement("div"); acts.className = "ts-acts";
-        const link = document.createElement("button"); link.className = "btn ghost"; link.type = "button"; link.textContent = "🔗 로비 링크";
-        link.addEventListener("click", async () => {
-          const url = lobbyUrl(c.access_code);
-          try { await navigator.clipboard.writeText(url); link.textContent = "✓ 복사됨"; setTimeout(() => link.textContent = "🔗 로비 링크", 1500); }
-          catch (e) { prompt("교실에 게시할 학급 로비 링크예요:", url); }
-        });
-        const qr = document.createElement("button"); qr.className = "btn ghost"; qr.type = "button"; qr.textContent = "📺 학급 QR";
-        qr.addEventListener("click", () => openQrModal("🏫 " + c.name, c.access_code, lobbyUrl(c.access_code), "학급 QR — 교실에 게시(학기 내내)"));
-        acts.append(link, qr);
-        row.append(main, acts); box.appendChild(row);
+    function mkClassLink(c) {
+      const b = document.createElement("button"); b.className = "btn ghost"; b.type = "button"; b.textContent = "🔗 로비 링크";
+      b.addEventListener("click", async () => {
+        const url = lobbyUrl(c.access_code);
+        try { await navigator.clipboard.writeText(url); b.textContent = "✓ 복사됨"; setTimeout(() => b.textContent = "🔗 로비 링크", 1500); }
+        catch (e) { prompt("교실에 게시할 학급 로비 링크예요:", url); }
       });
+      return b;
+    }
+    function mkClassQr(c) {
+      const b = document.createElement("button"); b.className = "btn ghost"; b.type = "button"; b.textContent = "📺 학급 QR";
+      b.addEventListener("click", () => openQrModal("🏫 " + c.name, c.access_code, lobbyUrl(c.access_code), "학급 QR — 교실에 게시(학기 내내)"));
+      return b;
+    }
+    function mkAddLesson(c) {   // 이 학급에 수업 추가 — 만들기 폼에 학급 미리 선택 + 위로
+      const b = document.createElement("button"); b.className = "btn ghost"; b.type = "button"; b.textContent = "＋ 수업";
+      b.addEventListener("click", () => { $("t-class").value = c.id; window.scrollTo({ top: 0, behavior: "smooth" }); $("t-title").focus(); });
+      return b;
+    }
+    function classBlock(c, sessions) {
+      const block = document.createElement("div"); block.className = "tc-classblock";
+      const head = document.createElement("div"); head.className = "tc-classhead";
+      const main = document.createElement("div"); main.className = "tch-main";
+      const nm = document.createElement("div"); nm.className = "tch-name"; nm.textContent = "🏫 " + c.name;
+      const meta = document.createElement("div"); meta.className = "tch-meta"; meta.textContent = "학급 코드 " + c.access_code + " · 수업 " + sessions.length + "개";
+      main.append(nm, meta);
+      const acts = document.createElement("div"); acts.className = "ts-acts"; acts.append(mkClassLink(c), mkClassQr(c), mkAddLesson(c));
+      head.append(main, acts); block.append(head);
+      const inner = document.createElement("div"); inner.className = "tc-classlessons";
+      if (!sessions.length) { const e = document.createElement("div"); e.className = "tc-muted"; e.style.padding = "4px 2px"; e.textContent = "이 학급에 아직 수업이 없어요. ‘＋ 수업’으로 열어요."; inner.appendChild(e); }
+      else sessions.forEach(s => inner.appendChild(makeSessionRow(s)));
+      block.append(inner); return block;
+    }
+    function standaloneBlock(sessions) {
+      const block = document.createElement("div"); block.className = "tc-classblock";
+      const head = document.createElement("div"); head.className = "tc-classhead";
+      const nm = document.createElement("div"); nm.className = "tch-name"; nm.textContent = "🗂 학급 미지정 (단독 수업)";
+      head.append(nm); block.append(head);
+      const inner = document.createElement("div"); inner.className = "tc-classlessons";
+      sessions.forEach(s => inner.appendChild(makeSessionRow(s)));
+      block.append(inner); return block;
+    }
+    async function renderHomeTree() {
+      let classes = [], sessions = [];
+      try { const r = await db.rpc("my_classes"); if (!r.error) classes = r.data || []; } catch (e) {}
+      try { const r = await db.rpc("my_sessions"); if (!r.error) sessions = r.data || []; } catch (e) {}
+      myClasses = classes;
+      // 만들기 폼 학급 드롭다운
+      const sel = $("t-class"); const cur = sel.value; sel.textContent = "";
+      const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "학급 없음(단독 수업)"; sel.appendChild(o0);
+      classes.forEach(c => { const o = document.createElement("option"); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
+      if (classes.some(c => c.id === cur)) sel.value = cur;
+      // 트리
+      const box = $("home-tree"); box.textContent = "";
+      const byClass = {}; sessions.forEach(s => { const k = s.class_id || ""; (byClass[k] = byClass[k] || []).push(s); });
+      if (!classes.length && !sessions.length) {
+        const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 학급·수업이 없어요. 위에서 새 수업을 열거나 아래 ‘＋ 학급 만들기’로 시작해요."; box.appendChild(n);
+      }
+      classes.forEach(c => box.appendChild(classBlock(c, byClass[c.id] || [])));
+      const standalone = byClass[""] || [];
+      if (standalone.length) box.appendChild(standaloneBlock(standalone));
     }
     $("btn-create-class").addEventListener("click", async () => {
       const name = prompt("학급 이름(반) — 예: 5학년 1반", "");
       if (name === null) return;
       if (!name.trim()) { showError("학급 이름을 적어요."); return; }
-      try { const r = await db.rpc("create_class", { p_name: name.trim() }); if (r.error) throw r.error; await loadMyClasses(); $("t-class").value = r.data.id; }
+      try { const r = await db.rpc("create_class", { p_name: name.trim() }); if (r.error) throw r.error; await renderHomeTree(); $("t-class").value = r.data.id; }
       catch (e) { showError("학급을 만들지 못했어요: " + (e.message || e)); }
     });
-    async function loadMySessions() {
-      const box = $("home-sessions"); box.textContent = "불러오는 중…";
-      let list;
-      try { const r = await db.rpc("my_sessions"); if (r.error) throw r.error; list = r.data || []; }
-      catch (e) { box.textContent = "수업을 불러오지 못했어요."; return; }
-      box.textContent = "";
-      if (!list.length) { const n = document.createElement("div"); n.className = "tc-muted"; n.textContent = "아직 만든 수업이 없어요. 위에서 새 수업을 열어요."; box.appendChild(n); return; }
-      // 학급(반)별로 묶어 표시(모드는 행 배지로). 학급 없으면 맨 뒤
-      const groups = {};
-      list.forEach(s => { const k = s.class_name || ""; (groups[k] = groups[k] || []).push(s); });
-      Object.keys(groups)
-        .sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b, "ko")))
-        .forEach(k => renderSessionSection(box, k ? ("🏫 " + k) : "🗂 학급 미지정", groups[k]));
-    }
-    function renderSessionSection(box, label, items) {
-      if (!items.length) return;   // 비어 있는 분류는 생략
-      const h = document.createElement("div"); h.className = "tc-group-label"; h.textContent = label + " · " + items.length + "개";
-      box.appendChild(h);
-      items.forEach(s => box.appendChild(makeSessionRow(s)));
-    }
     function makeSessionRow(s) {
       const isGroup = s.mode === "group";
       const row = document.createElement("div"); row.className = "tc-session-row";
@@ -395,14 +409,14 @@
       toggle.textContent = s.status === "closed" ? "열기" : "닫기";
       toggle.addEventListener("click", async () => {
         toggle.disabled = true;
-        try { const r = await db.rpc("set_session_status", { p_id: s.id, p_status: s.status === "closed" ? "open" : "closed" }); if (r.error) throw r.error; await loadMySessions(); }
+        try { const r = await db.rpc("set_session_status", { p_id: s.id, p_status: s.status === "closed" ? "open" : "closed" }); if (r.error) throw r.error; await renderHomeTree(); }
         catch (e) { toggle.disabled = false; showError("바꾸지 못했어요: " + (e.message || e)); }
       });
       const del = document.createElement("button"); del.className = "btn ghost ts-manage"; del.type = "button"; del.textContent = "🗑"; del.title = "삭제";
       del.addEventListener("click", async () => {
         if (!confirm("이 수업을 지울까요? 학생 질문·실까지 모두 사라지고 되돌릴 수 없어요.")) return;
         del.disabled = true;
-        try { const r = await db.rpc("delete_session", { p_id: s.id }); if (r.error) throw r.error; await loadMySessions(); }
+        try { const r = await db.rpc("delete_session", { p_id: s.id }); if (r.error) throw r.error; await renderHomeTree(); }
         catch (e) { del.disabled = false; showError("삭제하지 못했어요: " + (e.message || e)); }
       });
       const rename = document.createElement("button"); rename.className = "btn ghost ts-manage"; rename.type = "button"; rename.textContent = "✎ 이름";
@@ -410,7 +424,7 @@
         const nt = prompt("수업 이름(책 제목)", s.title || "");
         if (nt === null) return;
         rename.disabled = true;
-        try { const r = await db.rpc("rename_session", { p_id: s.id, p_title: nt.trim() }); if (r.error) throw r.error; await loadMySessions(); }
+        try { const r = await db.rpc("rename_session", { p_id: s.id, p_title: nt.trim() }); if (r.error) throw r.error; await renderHomeTree(); }
         catch (e) { rename.disabled = false; showError("바꾸지 못했어요: " + (e.message || e)); }
       });
       acts.append(link, qr, rename, toggle, del);
