@@ -205,6 +205,10 @@ function makeCard(q, opts = {}) {
 
 // ===== 렌더 =====
 function render() {
+  // 다리 입력 포커스·커서 보존 — 끼우기/저장으로 ③이 재그려져도 입력이 흔들리지 않게
+  const ae = document.activeElement;
+  const keepBridge = (ae && ae.dataset && ae.dataset.bridge != null)
+    ? { type: ae.dataset.bridge, start: ae.selectionStart, end: ae.selectionEnd } : null;
   // 스텝퍼·패널
   document.querySelectorAll(".stepper button").forEach(b =>
     b.setAttribute("aria-current", String(b.dataset.phase === S.phase)));
@@ -213,6 +217,10 @@ function render() {
   if (S.phase === "create") renderCreate();
   else if (S.phase === "classify") renderClassify();
   else renderConnect();
+  if (keepBridge) {
+    const el = document.querySelector('.bridge input[data-bridge="' + keepBridge.type + '"]');
+    if (el) { el.focus(); try { el.setSelectionRange(keepBridge.start, keepBridge.end); } catch (e) {} }
+  }
 }
 
 function renderCreate() {
@@ -351,6 +359,7 @@ function renderConnect() {
       const br = document.createElement("div"); br.className = "bridge";
       const conn = document.createElement("div"); conn.className = "conn"; conn.textContent = "↳ " + CONNECTOR[type];
       const inp = document.createElement("input"); inp.type = "text"; inp.placeholder = "다리 한 줄 (선택)";
+      inp.dataset.bridge = type;   // 재그리기 후 포커스·커서 복원용
       inp.value = th.bridges[type] || ""; inp.setAttribute("aria-label", `${KO[type]}에서 다음으로 잇는 다리 한 줄`);
       inp.addEventListener("input", e => setBridge(type, e.target.value));
       // 모둠 ③: 다 적고 바깥을 누르면 최종 저장(디바운스 취소) + 폴링 재반영
@@ -628,7 +637,8 @@ function configureRemoteUI(code) {
   const cbtn = document.querySelector('.stepper button[data-phase="connect"]');
   if (cbtn) cbtn.style.display = "none";                          // ③ 잇기 숨김
   ["btn-reset", "btn-import-json"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = "none"; });
-  document.getElementById("f-title").readOnly = true;            // 제목은 교사 소유
+  const ft = document.getElementById("f-title");                 // 제목은 교사 소유 — 학생은 못 고침(안내문도 편집 유도 제거)
+  ft.readOnly = true; ft.placeholder = "선생님이 정한 책 제목";
   applyRemoteSceneState();                                       // 장면은 비었을 때만 학생 편집(이후 board 따라 갱신)
   const rb = document.getElementById("roomBar");
   if (rb) { rb.hidden = false; const c = rb.querySelector(".rb-code"); if (c) c.textContent = code; }
