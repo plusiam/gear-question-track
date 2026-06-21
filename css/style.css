@@ -186,6 +186,9 @@ h1, h2, h3 { margin: 0; }
   padding: 9px 14px; margin-bottom: 12px; font-size: .92em; color: #155e54;
 }
 .room-bar .rb-code { letter-spacing: .12em; font-size: 1.05em; }
+.room-bar .rb-sync { font-size: .82em; font-weight: 700; }
+.room-bar .rb-sync.ok { color: var(--imagine); }
+.room-bar .rb-sync.off { color: var(--infer); }
 .room-bar .rb-hint { color: var(--muted); font-weight: 400; }
 body.remote .scene-bar input[readonly], body.remote .scene-bar textarea[readonly] {
   background: #f3f4f8; color: var(--muted); cursor: default;

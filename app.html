@@ -19,6 +19,7 @@
   <!-- 실시간 방 배너 (수업 코드로 들어왔을 때만 표시) -->
   <div class="room-bar" id="roomBar" hidden>
     🧩 수업 방 · 코드 <b class="rb-code"></b><b class="rb-group"></b>
+    <span class="rb-sync" id="rbSync"></span>
     <span class="rb-hint">— 장면으로 질문을 만들고 나눠요</span>
   </div>
 
@@ -40,7 +41,7 @@
   <header class="scene-bar">
     <div class="row">
       <label for="f-title">책 제목</label>
-      <input id="f-title" type="text" placeholder="예: 연우의 도전 (어떤 책·글이든 적어요)" />
+      <input id="f-title" type="text" maxlength="80" placeholder="예: 연우의 도전 (어떤 책·글이든 적어요)" />
       <button class="btn ghost" id="btn-export-json" type="button">💾 결과 저장</button>
       <button class="btn ghost" id="btn-import-json" type="button">📂 불러오기</button>
       <button class="btn ghost" id="btn-sound" type="button" aria-pressed="true">🔊 소리</button>

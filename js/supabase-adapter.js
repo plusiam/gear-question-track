@@ -28,7 +28,8 @@ window.GQT_makeSupabaseAdapter = function ({ code, config, host, groupNo }) {
     if (disposed) return;
     let data;
     try { data = await fetchBoard(); }
-    catch (e) { return; }            // 일시 단절은 조용히 다음 폴링에 재시도(마지막 보드 유지)
+    catch (e) { if (host.onSync) host.onSync(false); return; }   // 단절 알림 + 다음 폴링에 재시도(마지막 보드 유지)
+    if (host.onSync) host.onSync(true);
     const s = JSON.stringify(data);
     if (s === lastJson) return;
     lastJson = s;
@@ -52,6 +53,7 @@ window.GQT_makeSupabaseAdapter = function ({ code, config, host, groupNo }) {
     async init() {
       const data = await fetchBoard();          // 코드 검증(throw 시 startRemote가 안내)
       lastJson = JSON.stringify(data);
+      if (host.onSync) host.onSync(true);
       host.onBoard(data);
       timer = setInterval(() => poll(false), POLL_MS);
     },

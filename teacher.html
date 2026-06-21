@@ -350,15 +350,23 @@
       try { await navigator.clipboard.writeText(url); $("btn-copy-link").textContent = "✓ 복사됨"; setTimeout(() => $("btn-copy-link").textContent = "🔗 학생 링크 복사", 1500); }
       catch (e) { prompt("학생에게 줄 링크예요:", url); }
     });
+    let watchFails = 0;
     function startWatch(code) {
-      activeCode = code; watchGroupNo = null; showView("watch");
+      activeCode = code; watchGroupNo = null; watchFails = 0; showView("watch");
       $("w-code").textContent = code; lastJson = "";
       pollWatch(); stopPoll(); pollTimer = setInterval(pollWatch, POLL_MS);
     }
     async function pollWatch() {
       let data;
       try { const r = await db.rpc("board", { p_code: activeCode }); if (r.error) throw r.error; data = r.data; }
-      catch (e) { stopPoll(); showError("이 수업을 더 볼 수 없어요(닫혔거나 만료). 내 수업으로 돌아가요."); showHome(); return; }
+      catch (e) {
+        // 일시 단절에 바로 퇴장시키지 않음 — 연속 실패가 누적되면 그때 나감
+        watchFails++;
+        if (watchFails >= 4) { stopPoll(); showError("이 수업을 더 볼 수 없어요(닫혔거나 만료). 내 수업으로 돌아가요."); showHome(); return; }
+        showError("⚠ 연결이 잠깐 끊겼어요. 다시 시도 중…");
+        return;
+      }
+      watchFails = 0; $("tc-error").hidden = true;
       lastBoardData = data;
       const s = JSON.stringify(data); if (s === lastJson) return; lastJson = s; renderWatch(data);
     }

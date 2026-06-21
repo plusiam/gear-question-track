@@ -41,7 +41,6 @@ const LocalAdapter = {
     return null;
   },
   push(state) { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { /* 용량/프라이빗 모드 무시 */ } },
-  onRemoteChange() {},   // 개인 모드는 원격 변경 없음
   dispose() {}
 };
 let adapter = LocalAdapter;   // 실시간(?code=)이면 startRemote에서 SupabaseAdapter로 교체
@@ -491,8 +490,7 @@ function applyRemoteSceneState() {
   if (!adapter.remote) return;
   const fs = document.getElementById("f-scene");
   const empty = !(S.scene && S.scene.trim());
-  fs.readOnly = !empty;
-  fs.classList.toggle("ro", !empty);
+  fs.readOnly = !empty;   // 읽기전용 스타일은 [readonly] CSS가 담당
   fs.placeholder = empty ? "아직 장면이 없어요. 함께 정해 적고 바깥을 누르면 친구들에게도 보여요." : "";
 }
 document.getElementById("f-title").addEventListener("input", e => setTitle(e.target.value));
@@ -677,6 +675,10 @@ async function startRemote(code) {
   } catch (e) { showRoomError("실시간 기능을 불러오지 못했어요. 인터넷 연결을 확인해 주세요."); return; }
   configureRemoteUI(code);
   const host = {
+    onSync(okConn) {   // 연결 상태 표시(폴링 하트비트)
+      const el = document.getElementById("rbSync");
+      if (el) { el.textContent = okConn ? "● 연결됨" : "⚠ 다시 연결 중…"; el.className = "rb-sync " + (okConn ? "ok" : "off"); }
+    },
     onBoard(board) {
       lastBoard = board;
       const isGroup = board.session && board.session.mode === "group";
