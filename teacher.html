@@ -419,16 +419,16 @@
         const gq = qs.filter(q => q.group_no === g);
         const by = { fact: 0, infer: 0, imagine: 0 }; gq.forEach(q => { if (q.type) by[q.type]++; });
         const scene = (groups.find(x => x.group_no === g) || {}).scene || "";
-        const th = threads.find(t => t.group_no === g), slots = (th && th.slots) || {};
-        const filled = ["fact", "infer", "imagine"].filter(k => slots[k]).length;
+        const gThreads = threads.filter(t => t.group_no === g);
+        const doneCount = gThreads.filter(t => { const s = t.slots || {}; return s.fact && s.infer && s.imagine; }).length;
         const tile = document.createElement("button"); tile.type = "button"; tile.className = "tc-grouptile";
         tile.addEventListener("click", () => { watchGroupNo = g; renderWatch(lastBoardData); });
         const h = document.createElement("div"); h.className = "gt-head"; h.textContent = g + " 모둠";
         const sc = document.createElement("div"); sc.className = "gt-scene"; sc.textContent = scene || "(장면 미정)";
         const cnt = document.createElement("div"); cnt.className = "gt-counts";
         cnt.textContent = "질문 " + gq.length + " · 사실 " + by.fact + " · 추론 " + by.infer + " · 상상 " + by.imagine;
-        const thr = document.createElement("div"); thr.className = "gt-thread" + (filled === 3 ? " done" : "");
-        thr.textContent = filled === 3 ? "⚙ 한 실 완성!" : "실 " + filled + "/3";
+        const thr = document.createElement("div"); thr.className = "gt-thread" + (doneCount ? " done" : "");
+        thr.textContent = gThreads.length ? ("실 " + gThreads.length + "개" + (doneCount ? " · 완성 " + doneCount : "")) : "실 0개";
         tile.append(h, sc, cnt, thr); grid.appendChild(tile);
       }
     }
@@ -440,7 +440,7 @@
       const count = sess.group_count || g;
       const qs = allq.filter(q => q.group_no === g);
       const scene = (groups.find(x => x.group_no === g) || {}).scene || "";
-      const th = threads.find(t => t.group_no === g), slots = (th && th.slots) || {}, bridges = (th && th.bridges) || {};
+      const myThreads = threads.filter(t => t.group_no === g);
       const qById = id => allq.find(q => q.id === id) || {};
       $("w-grouplinks-wrap").hidden = true; $("w-scene").textContent = ""; $("w-list-wrap").hidden = false;
       const list = $("w-qlist"); list.className = "tc-present"; list.textContent = "";
@@ -471,19 +471,27 @@
       if (un.length) { const u = document.createElement("div"); u.className = "tc-muted"; u.style.marginTop = "8px"; u.textContent = "안 나눔: " + un.map(q => q.text).join("  ·  "); list.appendChild(u); }
 
       const tw = document.createElement("div"); tw.className = "tc-present-thread";
-      const tl = document.createElement("div"); tl.className = "tpt-label"; tl.textContent = "⚙ 톱니 한 실"; tw.appendChild(tl);
-      if (slots.fact || slots.infer || slots.imagine) {
-        const chain = document.createElement("div"); chain.className = "tpt-chain";
-        ["fact", "infer", "imagine"].forEach((type, i) => {
-          const cell = document.createElement("div"); cell.className = "tpt-cell " + type;
-          const cl = document.createElement("div"); cl.className = "tpt-cl"; cl.textContent = KO[type];
-          const q = slots[type] ? qById(slots[type]) : null;
-          const tx = document.createElement("div"); tx.textContent = (q && q.text) ? q.text : "(비어 있음)";
-          cell.append(cl, tx); chain.appendChild(cell);
-          if (i < 2) { const br = document.createElement("div"); br.className = "tpt-bridge"; br.textContent = bridges[type] ? "↳ " + bridges[type] : "↓"; chain.appendChild(br); }
+      const tl = document.createElement("div"); tl.className = "tpt-label";
+      tl.textContent = "⚙ 톱니 실" + (myThreads.length > 1 ? " (" + myThreads.length + "개)" : "");
+      tw.appendChild(tl);
+      if (!myThreads.length) {
+        const e = document.createElement("div"); e.className = "tc-muted"; e.textContent = "아직 한 실을 안 만들었어요."; tw.appendChild(e);
+      } else {
+        myThreads.forEach((th, ti) => {
+          const slots = th.slots || {}, bridges = th.bridges || {};
+          if (myThreads.length > 1) { const lbl = document.createElement("div"); lbl.className = "tc-muted"; lbl.style.margin = "10px 0 4px"; lbl.textContent = "실 " + (ti + 1); tw.appendChild(lbl); }
+          const chain = document.createElement("div"); chain.className = "tpt-chain";
+          ["fact", "infer", "imagine"].forEach((type, i) => {
+            const cell = document.createElement("div"); cell.className = "tpt-cell " + type;
+            const cl = document.createElement("div"); cl.className = "tpt-cl"; cl.textContent = KO[type];
+            const q = slots[type] ? qById(slots[type]) : null;
+            const tx = document.createElement("div"); tx.textContent = (q && q.text) ? q.text : "(비어 있음)";
+            cell.append(cl, tx); chain.appendChild(cell);
+            if (i < 2) { const br = document.createElement("div"); br.className = "tpt-bridge"; br.textContent = bridges[type] ? "↳ " + bridges[type] : "↓"; chain.appendChild(br); }
+          });
+          tw.appendChild(chain);
         });
-        tw.appendChild(chain);
-      } else { const e = document.createElement("div"); e.className = "tc-muted"; e.textContent = "아직 한 실을 안 만들었어요."; tw.appendChild(e); }
+      }
       list.appendChild(tw);
     }
 

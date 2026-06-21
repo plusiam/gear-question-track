@@ -105,6 +105,7 @@ function setType(id, type) {
 }
 function setSlot(type, id) {
   const th = activeThread();
+  if (!th) return;   // 실시간에 아직 실이 없음
   if (id) {
     const q = qById(id);
     if (!q || q.type !== type) return; // 유형 맞는 카드만
@@ -112,13 +113,14 @@ function setSlot(type, id) {
     TYPES.forEach(k => { if (th.slots[k] === id) th.slots[k] = null; });
   }
   th.slots[type] = id;
-  if (adapter.remote) { adapter.saveThread(th.slots, th.bridges); render(); return; } // 모둠: 실 통째로 저장(slot은 LWW)
+  if (adapter.remote) { adapter.saveThread(S.activeThreadId, th.slots, th.bridges); render(); return; } // 활성 실에 저장(slot LWW)
   save(); render();
 }
 function setBridge(srcSlot, text) {
   const th = activeThread();
+  if (!th) return;
   th.bridges[srcSlot] = text;                            // 낙관적 로컬(입력칸은 그대로)
-  if (adapter.remote) { clearTimeout(bridgeSaveTimer); bridgeSaveTimer = setTimeout(() => adapter.saveThread(th.slots, th.bridges), 500); return; }
+  if (adapter.remote) { const tid = S.activeThreadId; clearTimeout(bridgeSaveTimer); bridgeSaveTimer = setTimeout(() => adapter.saveThread(tid, th.slots, th.bridges), 500); return; }
   save();
 }
 function resetAll() { if (adapter.remote) return; S = freshState(); selectedId = null; save(); syncInputs(); render(); }
@@ -259,14 +261,24 @@ function renderClassify() {
   });
 }
 
-// 다중 실 — 같은 장면에 여러 코스(각 실은 1-1-1 유지). 개인 모드 우선(실시간은 추후)
-function addThread() {
+// 다중 실 — 같은 장면에 여러 코스(각 실은 1-1-1 유지). 개인=localStorage, 실시간=서버 실(id 기반)
+async function addThread() {
+  if (adapter.remote) {
+    const id = await adapter.addThread();   // 서버에 새 실 생성 → id 반환(폴링으로 투영됨)
+    if (id) { S.activeThreadId = id; render(); }
+    return;
+  }
   const n = S.threads.reduce((m, t) => Math.max(m, +(String(t.id).replace(/\D/g, "")) || 0), 0) + 1;
   const t = newThread("th" + n);
   S.threads.push(t); S.activeThreadId = t.id; clearSelect();
   save(); render();
 }
 function deleteActiveThread() {
+  if (adapter.remote) {
+    const id = S.activeThreadId; if (!id) return;
+    S.activeThreadId = null; adapter.deleteThread(id);   // 폴링으로 재투영
+    return;
+  }
   if (S.threads.length <= 1) return;
   S.threads = S.threads.filter(t => t.id !== S.activeThreadId);
   S.activeThreadId = S.threads[0].id; clearSelect();
@@ -275,7 +287,6 @@ function deleteActiveThread() {
 function renderThreadTabs() {
   const bar = document.getElementById("thread-tabs");
   if (!bar) return;
-  if (adapter.remote) { bar.hidden = true; bar.textContent = ""; return; }   // 실시간은 단일 실(다중 실은 추후)
   bar.hidden = false; bar.textContent = "";
   S.threads.forEach((t, i) => {
     const b = document.createElement("button");
@@ -287,7 +298,8 @@ function renderThreadTabs() {
   const add = document.createElement("button"); add.type = "button"; add.className = "thread-tab add"; add.textContent = "＋ 새 실";
   add.addEventListener("click", addThread);
   bar.appendChild(add);
-  if (S.threads.length > 1) {
+  const canDel = adapter.remote ? !!S.activeThreadId : S.threads.length > 1;
+  if (canDel) {
     const del = document.createElement("button"); del.type = "button"; del.className = "thread-tab del"; del.textContent = "🗑 이 실";
     del.addEventListener("click", () => { if (confirm("지금 보고 있는 실을 지울까요?")) deleteActiveThread(); });
     bar.appendChild(del);
@@ -295,11 +307,19 @@ function renderThreadTabs() {
 }
 
 function renderConnect() {
-  const th = activeThread();
   renderThreadTabs();
+  const th = activeThread();
   document.getElementById("export-title").textContent = S.title ? ("📖 " + S.title) : "";
   const track = document.getElementById("connect-track");
   track.textContent = "";
+  if (!th) {   // 실시간에서 아직 실이 없음 — 새 실 만들기 유도
+    const n = document.createElement("div"); n.className = "empty-note";
+    n.textContent = "‘＋ 새 실’을 눌러 사실 → 추론 → 상상을 이어 보세요.";
+    track.appendChild(n);
+    document.getElementById("doneBanner").classList.remove("show");
+    document.getElementById("connect-pool").textContent = "";
+    return;
+  }
   TYPES.forEach((type, i) => {
     const sk = document.createElement("div");
     sk.className = "socket"; sk.dataset.type = type; sk.tabIndex = 0; sk.setAttribute("role", "button");
@@ -327,7 +347,7 @@ function renderConnect() {
       inp.value = th.bridges[type] || ""; inp.setAttribute("aria-label", `${KO[type]}에서 다음으로 잇는 다리 한 줄`);
       inp.addEventListener("input", e => setBridge(type, e.target.value));
       // 모둠 ③: 다 적고 바깥을 누르면 최종 저장(디바운스 취소) + 폴링 재반영
-      inp.addEventListener("blur", () => { if (adapter.remote && adapter.groupNo != null) { clearTimeout(bridgeSaveTimer); adapter.saveThread(activeThread().slots, activeThread().bridges); } });
+      inp.addEventListener("blur", () => { const t = activeThread(); if (adapter.remote && t) { clearTimeout(bridgeSaveTimer); adapter.saveThread(S.activeThreadId, t.slots, t.bridges); } });
       br.append(conn, inp); track.appendChild(br);
     }
   });
@@ -538,6 +558,16 @@ document.getElementById("btn-png").addEventListener("click", async () => {
 // ===== 실시간 투영·UI =====
 // 서버 보드(board())를 로컬 상태 S로 투영 — 항상 보드가 진실원천.
 //  전체(class): 공유 풀·공유 장면, ①②만(③ 숨김).  모둠(group): 내 모둠 것만, ③ 잇기 켜짐.
+function projectThreads(board, keep) {
+  // 컨텍스트(전체=group_no null / 모둠=group_no g)의 모든 실을 투영 — 다중 실. 활성 실은 유지(없으면 첫 실, 없으면 null)
+  const list = (board.threads || []).filter(keep).map(t => ({
+    id: t.id,
+    slots: Object.assign({ fact: null, infer: null, imagine: null }, t.slots || {}),
+    bridges: Object.assign({ fact: "", infer: "" }, t.bridges || {})
+  }));
+  S.threads = list;
+  S.activeThreadId = list.some(t => t.id === S.activeThreadId) ? S.activeThreadId : (list[0] ? list[0].id : null);
+}
 function applyBoard(board) {
   const sess = (board && board.session) || {};
   S.title = sess.title || "";
@@ -548,22 +578,12 @@ function applyBoard(board) {
     const grp = (board.groups || []).find(x => x.group_no === g);
     S.scene = (grp && grp.scene) || "";
     S.questions = allQ.filter(q => q.group_no === g).map(q => ({ id: q.id, text: q.text, type: q.type || null }));
-    const th = (board.threads || []).find(t => t.group_no === g);
-    S.threads = [ th
-      ? { id: "th1", slots: Object.assign({ fact: null, infer: null, imagine: null }, th.slots || {}),
-                     bridges: Object.assign({ fact: "", infer: "" }, th.bridges || {}) }
-      : newThread("th1") ];
-    S.activeThreadId = "th1";
+    projectThreads(board, t => t.group_no === g);
   } else {
-    // 전체 모드 — 공유 풀 + 학급 공유 실 1개(group_no=null, 교사 주도로 함께 잇기)
+    // 전체 모드 — 공유 풀 + 학급 공유 실(group_no=null, 여러 실 가능)
     S.scene = sess.scene || "";
     S.questions = allQ.map(q => ({ id: q.id, text: q.text, type: q.type || null }));
-    const th = (board.threads || []).find(t => t.group_no == null);
-    S.threads = [ th
-      ? { id: "th1", slots: Object.assign({ fact: null, infer: null, imagine: null }, th.slots || {}),
-                     bridges: Object.assign({ fact: "", infer: "" }, th.bridges || {}) }
-      : newThread("th1") ];
-    S.activeThreadId = "th1";
+    projectThreads(board, t => t.group_no == null);
   }
 }
 function setConnectVisible(show) {

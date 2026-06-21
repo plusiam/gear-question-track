@@ -73,9 +73,21 @@ window.GQT_makeSupabaseAdapter = function ({ code, config, host, groupNo }) {
     setGroupScene(text) {
       return write(() => db.rpc("set_group_scene", { p_code: code, p_group_no: gNo, p_text: text }).then(ok));
     },
-    // 모둠 ③ 잇기 — 모둠당 실 1개 upsert(통째로 — slot은 last-write-wins, 다리 텍스트는 클라 포커스 가드로 보호)
-    saveThread(slots, bridges) {
-      return write(() => db.rpc("save_thread", { p_code: code, p_slots: slots, p_bridges: bridges, p_group_no: gNo }).then(ok));
+    // ③ 잇기 — 실 식별자(threadId) 기준 저장(slot LWW, 다리는 포커스 가드). threadId 없으면 새 실 생성
+    saveThread(threadId, slots, bridges) {
+      return write(() => db.rpc("save_thread", { p_code: code, p_thread_id: threadId || null, p_slots: slots, p_bridges: bridges, p_group_no: gNo }).then(ok));
+    },
+    // 새 실 생성 → 새 실 id 반환(클라가 활성 실로 지정)
+    async addThread() {
+      try {
+        const r = await db.rpc("save_thread", { p_code: code, p_thread_id: null, p_slots: { fact: null, infer: null, imagine: null }, p_bridges: { fact: "", infer: "" }, p_group_no: gNo });
+        if (r.error) throw r.error;
+        await poll(true);
+        return r.data;   // 새 실 id
+      } catch (e) { if (host.announce) host.announce(msgOf(e)); return null; }
+    },
+    deleteThread(threadId) {
+      return write(() => db.rpc("delete_thread", { p_code: code, p_thread_id: threadId }).then(ok));
     },
 
     // 드래그·집기 끝나 idle이 되면 stash해 둔 보드를 반영
