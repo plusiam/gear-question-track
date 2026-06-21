@@ -347,6 +347,27 @@ function renderThreadTabs() {
   }
 }
 
+// 다른 실에 이미 쓴 질문인가(현재 실 제외) — 풀에서 옅게 표시(재사용 가능)
+function usedInOtherThreads(qid) {
+  return S.threads.some(t => t.id !== S.activeThreadId && TYPES.some(k => t.slots[k] === qid));
+}
+// 한 실을 사실→추론→상상 체인으로(다리 포함) — 완성 요약·내 실 모아보기 공용
+function chainEl(slots, bridges) {
+  const wrap = document.createElement("div"); wrap.className = "chain";
+  TYPES.forEach((type, i) => {
+    const seg = document.createElement("span"); seg.className = "chain-seg lab-bg-" + type;
+    const q = slots[type] ? qById(slots[type]) : null;
+    seg.textContent = (q && q.text) ? q.text : "(비어)";
+    wrap.appendChild(seg);
+    if (i < TYPES.length - 1) {
+      const arr = document.createElement("span"); arr.className = "chain-arr";
+      arr.textContent = (bridges && bridges[type]) ? "↳ " + bridges[type] : "→";
+      wrap.appendChild(arr);
+    }
+  });
+  return wrap;
+}
+
 function renderConnect() {
   renderThreadTabs();
   const th = activeThread();
@@ -399,6 +420,15 @@ function renderConnect() {
   banner.classList.toggle("show", complete);
   if (complete && !render._wasComplete && appReady) { blip(); announce("세 톱니가 모두 채워졌어요. 한 실 완성!"); }
   render._wasComplete = complete;
+  // 완성 실 — 문장처럼 한 줄로 보여주기(사실 →[다리]→ 추론 →[다리]→ 상상)
+  const summary = document.getElementById("thread-summary");
+  if (summary) {
+    if (complete) {
+      summary.hidden = false; summary.textContent = "";
+      const lab = document.createElement("span"); lab.className = "ts-done-lab"; lab.textContent = "✅ 한 실 완성 ";
+      summary.append(lab, chainEl(th.slots, th.bridges));
+    } else { summary.hidden = true; summary.textContent = ""; }
+  }
 
   // 고를 수 있는 풀 (분류된 것, 슬롯에 든 건 제외)
   const pool = document.getElementById("connect-pool");
@@ -415,14 +445,48 @@ function renderConnect() {
       pcol.appendChild(n);
     } else {
       const box = document.createElement("div"); box.className = "list";
-      avail.forEach(q => box.appendChild(makeCard(q, {
-        pickable: true,
-        onTap: () => { setSlot(type, q.id); blip(); announce(`${KO[type]} 질문을 끼웠어요.`); }
-      })));
+      avail.forEach(q => {
+        const card = makeCard(q, { pickable: true, onTap: () => { setSlot(type, q.id); blip(); announce(`${KO[type]} 질문을 끼웠어요.`); } });
+        if (usedInOtherThreads(q.id)) {   // 다른 실에 이미 쓴 질문 — 옅게 + 표시(그래도 재사용 가능)
+          card.classList.add("used-other");
+          const tag = document.createElement("span"); tag.className = "used-tag"; tag.textContent = "✓ 다른 실"; card.appendChild(tag);
+        }
+        box.appendChild(card);
+      });
       pcol.appendChild(box);
     }
     pool.appendChild(pcol);
   });
+  // 안 나눔 질문 — ③에서도 구제(접이식, 여기서 바로 나눠 풀에 넣기)
+  const unsortedBox = document.getElementById("connect-unsorted");
+  if (unsortedBox) {
+    unsortedBox.textContent = "";
+    const uns = S.questions.filter(q => !q.type);
+    if (uns.length) {
+      const det = document.createElement("details"); det.className = "unsorted-fold";
+      const sum = document.createElement("summary"); sum.textContent = "아직 안 나눈 질문 " + uns.length + "개 — 여기서 나눠 쓸 수 있어요";
+      det.appendChild(sum);
+      const box = document.createElement("div"); box.className = "list";
+      uns.forEach(q => box.appendChild(makeCard(q, { classify: true })));
+      det.appendChild(box); unsortedBox.appendChild(det);
+    }
+  }
+  // 내 실 모아보기 — 다중 실일 때 각 실을 체인으로 비교(누르면 그 실로)
+  const fold = document.getElementById("my-threads-fold");
+  if (fold) {
+    if (S.threads.length > 1) {
+      fold.hidden = false;
+      document.getElementById("my-threads-sum").textContent = "🧵 내 실 모아보기 (" + S.threads.length + ")";
+      const mt = document.getElementById("my-threads"); mt.textContent = "";
+      S.threads.forEach((t, i) => {
+        const row = document.createElement("div"); row.className = "my-thread-row" + (t.id === S.activeThreadId ? " on" : "");
+        const lab = document.createElement("div"); lab.className = "mt-label"; lab.textContent = "실 " + (i + 1) + (t.id === S.activeThreadId ? " (지금 보는 실)" : "");
+        row.append(lab, chainEl(t.slots, t.bridges));
+        row.addEventListener("click", () => { S.activeThreadId = t.id; clearSelect(); render(); });
+        mt.appendChild(row);
+      });
+    } else { fold.hidden = true; }
+  }
 }
 
 // ===== pick→place (탭 2단계 + 키보드 + 드래그) — 분류/잇기 공용 =====

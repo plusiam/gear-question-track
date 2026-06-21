@@ -103,6 +103,25 @@ h1, h2, h3 { margin: 0; }
 .card.dragging { z-index: 999; box-shadow: 0 12px 28px rgba(0,0,0,.25); transform: scale(1.04); cursor: grabbing; }
 
 .list { display: grid; gap: 8px; margin-top: 10px; }
+/* ③ 완성 실 요약 / 안 나눔 구제 / 내 실 모아보기 */
+.thread-summary { background: var(--imagine-bg); border: 2px solid var(--imagine); border-radius: 12px; padding: 12px 14px; margin: 10px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.thread-summary[hidden] { display: none; }   /* display:flex가 hidden 속성을 덮지 않게 */
+.thread-summary .ts-done-lab { font-weight: 800; color: var(--imagine); }
+.chain { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chain-seg { padding: 4px 10px; border-radius: 999px; font-size: .95em; font-family: "Gaegu", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
+.chain-seg.lab-bg-fact { background: var(--fact-bg); color: var(--fact); }
+.chain-seg.lab-bg-infer { background: var(--infer-bg); color: var(--infer); }
+.chain-seg.lab-bg-imagine { background: var(--imagine-bg); color: var(--imagine); }
+.chain-arr { color: var(--muted); font-size: .82em; }
+.connect-unsorted { margin-top: 12px; }
+.unsorted-fold > summary, .my-threads-fold > summary { cursor: pointer; font-weight: 700; font-size: .9em; color: var(--muted); padding: 8px 0; }
+.my-threads-fold { margin-top: 12px; }
+.my-threads { display: grid; gap: 8px; margin-top: 8px; }
+.my-thread-row { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; }
+.my-thread-row.on { border-color: var(--ink); background: #fbfbfd; }
+.my-thread-row .mt-label { font-weight: 800; font-size: .82em; color: var(--muted); margin-bottom: 4px; }
+.card .used-tag { font-size: .68em; color: var(--muted); margin-left: 6px; white-space: nowrap; }
+.card.used-other { opacity: .6; }
 /* ② 카드 인라인 분류 버튼 */
 .card.card-cat { flex-wrap: wrap; }
 .c-classify { width: 100%; display: flex; gap: 6px; margin-top: 2px; }
