@@ -262,9 +262,17 @@ function renderClassify() {
 }
 
 // 다중 실 — 같은 장면에 여러 코스(각 실은 1-1-1 유지). 개인=localStorage, 실시간=서버 실(id 기반)
+let addingThread = false;   // 실시간 생성 중복 클릭 가드
+const emptyThread = () => S.threads.find(t => !t.slots.fact && !t.slots.infer && !t.slots.imagine);
 async function addThread() {
+  // 빈 실이 이미 있으면 새로 만들지 않고 그 실로 이동(빈 실 누적 방지 — 연속 클릭 안전)
+  const e = emptyThread();
+  if (e) { S.activeThreadId = e.id; clearSelect(); render(); announce("빈 실이 있어요. 이 실을 채워요."); return; }
   if (adapter.remote) {
+    if (addingThread) return;               // 첫 생성이 끝나기 전 둘째 클릭 차단(레이스 방지)
+    addingThread = true;
     const id = await adapter.addThread();   // 서버에 새 실 생성 → id 반환(폴링으로 투영됨)
+    addingThread = false;
     if (id) { S.activeThreadId = id; render(); }
     return;
   }
