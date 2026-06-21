@@ -44,6 +44,7 @@ const LocalAdapter = {
   dispose() {}
 };
 let adapter = LocalAdapter;   // 실시간(?code=)이면 startRemote에서 SupabaseAdapter로 교체
+const teachMode = new URLSearchParams(location.search).get("teach") === "1";   // 교사 모드(관전→이 모둠 보드 들어가기). 인증 경계 아님 — 관리 UI 플래그
 // 실시간 모드는 서버 RPC가 저장을 맡으므로 로컬 push를 건너뛴다(단일 차단점 — 모든 로컬 mutator가 안전해짐)
 function save() { if (adapter.remote) return; adapter.push(S); }
 function loadSaved() { return adapter.load(); }
@@ -249,7 +250,7 @@ function renderCreate() {
     list.appendChild(n); return;
   }
   // 실시간(공유 발산) 모드에선 남의 질문 삭제 방지 — 삭제 버튼 숨김
-  S.questions.forEach(q => list.appendChild(makeCard(q, { deletable: !adapter.remote })));
+  S.questions.forEach(q => list.appendChild(makeCard(q, { deletable: !adapter.remote || teachMode })));
 }
 
 function renderClassify() {
@@ -737,7 +738,14 @@ function configureRemoteUI(code) {
   ft.readOnly = true; ft.placeholder = "선생님이 정한 책 제목";
   applyRemoteSceneState();                                       // 장면은 비었을 때만 학생 편집(이후 board 따라 갱신)
   const rb = document.getElementById("roomBar");
-  if (rb) { rb.hidden = false; const c = rb.querySelector(".rb-code"); if (c) c.textContent = code; }
+  if (rb) {
+    rb.hidden = false; const c = rb.querySelector(".rb-code"); if (c) c.textContent = code;
+    if (teachMode) {   // 교사 모드 배지 — 관리(삭제 등) 가능 표시
+      document.body.classList.add("teach");
+      const tb = document.createElement("span"); tb.className = "rb-teach"; tb.textContent = "👩‍🏫 교사 모드";
+      rb.insertBefore(tb, rb.querySelector(".rb-hint"));
+    }
+  }
   if (S.phase === "connect") S.phase = "classify";
 }
 function showRoomError(msg) {

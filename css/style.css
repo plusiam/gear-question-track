@@ -227,6 +227,7 @@ h1, h2, h3 { margin: 0; }
 .room-bar .rb-sync { font-size: .82em; font-weight: 700; }
 .room-bar .rb-sync.ok { color: var(--imagine); }
 .room-bar .rb-sync.off { color: var(--infer); }
+.room-bar .rb-teach { font-size: .82em; font-weight: 800; color: #fff; background: var(--imagine); border-radius: 999px; padding: 2px 9px; }
 .room-bar .rb-hint { color: var(--muted); font-weight: 400; }
 body.remote .scene-bar input[readonly], body.remote .scene-bar textarea[readonly] {
   background: #f3f4f8; color: var(--muted); cursor: default;

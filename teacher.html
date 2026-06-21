@@ -84,6 +84,7 @@
     .tc-grouptile .gt-counts { color: var(--muted); font-size: .82em; }
     .tc-grouptile .gt-thread { font-size: .85em; font-weight: 700; color: var(--muted); }
     .tc-grouptile .gt-thread.done { color: var(--imagine); }
+    .tc-grouptile .gt-enter { font-size: .82em; padding: 6px 10px; margin-top: 4px; }
 
     /* 모둠 발표 모드 (전자칠판용 — 큰 글씨) */
     .tc-present-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -541,15 +542,19 @@
         const scene = (groups.find(x => x.group_no === g) || {}).scene || "";
         const gThreads = threads.filter(t => t.group_no === g);
         const doneCount = gThreads.filter(t => { const s = t.slots || {}; return s.fact && s.infer && s.imagine; }).length;
-        const tile = document.createElement("button"); tile.type = "button"; tile.className = "tc-grouptile";
-        tile.addEventListener("click", () => { watchGroupNo = g; renderWatch(lastBoardData); });
+        const tile = document.createElement("div"); tile.className = "tc-grouptile"; tile.tabIndex = 0; tile.setAttribute("role", "button");
+        const openDetail = () => { watchGroupNo = g; renderWatch(lastBoardData); };
+        tile.addEventListener("click", openDetail);
+        tile.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(); } });
         const h = document.createElement("div"); h.className = "gt-head"; h.textContent = g + " 모둠";
         const sc = document.createElement("div"); sc.className = "gt-scene"; sc.textContent = scene || "(장면 미정)";
         const cnt = document.createElement("div"); cnt.className = "gt-counts";
         cnt.textContent = "질문 " + gq.length + " · 사실 " + by.fact + " · 추론 " + by.infer + " · 상상 " + by.imagine;
         const thr = document.createElement("div"); thr.className = "gt-thread" + (doneCount ? " done" : "");
         thr.textContent = gThreads.length ? ("실 " + gThreads.length + "개" + (doneCount ? " · 완성 " + doneCount : "")) : "실 0개";
-        tile.append(h, sc, cnt, thr); grid.appendChild(tile);
+        const enter = document.createElement("button"); enter.type = "button"; enter.className = "btn ghost gt-enter"; enter.textContent = "✏️ 들어가기";
+        enter.addEventListener("click", e => { e.stopPropagation(); window.open(studentUrl(activeCode) + "&g=" + g + "&teach=1", "_blank"); });
+        tile.append(h, sc, cnt, thr, enter); grid.appendChild(tile);
       }
     }
 
@@ -567,9 +572,11 @@
 
       const nav = document.createElement("div"); nav.className = "tc-present-nav";
       const title = document.createElement("div"); title.className = "tc-present-title"; title.textContent = g + " 모둠  ·  " + g + " / " + count;
+      const enterBtn = mkBtn("✏️ 이 모둠 보드 들어가기", () => window.open(studentUrl(activeCode) + "&g=" + g + "&teach=1", "_blank"));
+      enterBtn.className = "btn";   // 강조(교사 모드로 라이브 보드 진입)
       nav.append(mkBtn("← 이전 모둠", () => gotoGroup(g - 1, count)), title,
                  mkBtn("다음 모둠 →", () => gotoGroup(g + 1, count)),
-                 mkBtn("▦ 모둠 한눈에", () => { watchGroupNo = null; renderWatch(lastBoardData); }));
+                 mkBtn("▦ 모둠 한눈에", () => { watchGroupNo = null; renderWatch(lastBoardData); }), enterBtn);
       list.appendChild(nav);
 
       const sc = document.createElement("div"); sc.className = "tc-present-scene";
