@@ -187,6 +187,12 @@
           <label for="t-scene">장면 <span style="font-weight:400;color:var(--muted)">(선택 — 비우면 학생들이 함께 정해요)</span></label>
           <textarea id="t-scene" maxlength="1000" placeholder="질문을 만들 장면이나 글을 적어요. 비워두면 학생들이 직접 정합니다."></textarea>
         </div>
+        <div class="tc-field">
+          <label style="font-weight:400; display:flex; align-items:center; gap:8px; cursor:pointer">
+            <input type="checkbox" id="t-connect" /> ③ 잇기(심화) 포함 — 사실→추론→상상을 한 줄로 잇기까지
+          </label>
+          <span class="tc-muted" style="font-size:.82em">기본은 ① 만들기·② 나누기까지예요. ‘잇기’는 더 깊이 들어갈 때 켜요(주로 교사 주도).</span>
+        </div>
         <button class="btn" id="btn-create" type="button">수업 열기</button>
         <span class="tc-muted" id="create-msg" style="margin-left:10px"></span>
       </div>
@@ -444,9 +450,10 @@
       const mode = selectedMode(), title = $("t-title").value.trim(), scene = mode === "group" ? "" : $("t-scene").value.trim();
       const count = mode === "group" ? Math.max(1, Math.min(12, parseInt($("t-groupcount").value, 10) || 4)) : null;
       const classId = $("t-class").value || null;
+      const connect = $("t-connect").checked;
       $("btn-create").disabled = true; $("create-msg").textContent = "여는 중…";
       try {
-        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: mode, p_group_count: count, p_class_id: classId });
+        const { data, error } = await db.rpc("create_session", { p_title: title, p_scene: scene, p_mode: mode, p_group_count: count, p_class_id: classId, p_connect: connect });
         if (error) throw error;
         $("create-msg").textContent = ""; $("t-title").value = ""; $("t-scene").value = "";
         startWatch(data.access_code);   // 만들면 바로 그 수업 관전으로

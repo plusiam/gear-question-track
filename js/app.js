@@ -726,7 +726,11 @@ function pickGroup(n) {
   document.body.classList.remove("picking-group");
   const rb = document.getElementById("roomBar");
   if (rb) { const gt = rb.querySelector(".rb-group"); if (gt) gt.textContent = " · " + n + "모둠"; }
-  if (lastBoard) { applyBoard(lastBoard); syncInputs(); applyRemoteSceneState(); setConnectVisible(true); render(); }
+  if (lastBoard) {
+    const connectOn = !!(lastBoard.session && lastBoard.session.connect_enabled);
+    if (!connectOn && S.phase === "connect") S.phase = "classify";
+    applyBoard(lastBoard); syncInputs(); applyRemoteSceneState(); setConnectVisible(connectOn); render();
+  }
   announce(n + "모둠으로 들어왔어요.");
 }
 function configureRemoteUI(code) {
@@ -800,7 +804,9 @@ async function startRemote(code) {
       if (isGroup && adapter.groupNo == null) { showGroupPicker(); return; }
       const rbg = document.querySelector("#roomBar .rb-group");
       if (rbg) rbg.textContent = isGroup ? " · " + adapter.groupNo + "모둠" : "";
-      applyBoard(board); syncInputs(); applyRemoteSceneState(); setConnectVisible(true); render();   // ③ 잇기: 전체(공유 실)·모둠 모두
+      const connectOn = !!(board.session && board.session.connect_enabled);   // ③ 잇기는 교사가 켠 수업만(심화)
+      if (!connectOn && S.phase === "connect") S.phase = "classify";
+      applyBoard(board); syncInputs(); applyRemoteSceneState(); setConnectVisible(connectOn); render();
 
     },
     announce,
