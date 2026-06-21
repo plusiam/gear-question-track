@@ -188,6 +188,22 @@ function makeCard(q, opts = {}) {
   const txt = document.createElement("span");
   txt.className = "c-text"; txt.textContent = q.text;
   el.append(lab, txt);
+  if (opts.classify) {
+    // 카드에서 바로 분류(긴 목록에서 칸까지 안 내려가도 됨). 같은 버튼 다시 누르면 안 나눔으로
+    el.classList.add("card-cat");
+    const bar = document.createElement("div"); bar.className = "c-classify";
+    TYPES.forEach(type => {
+      const b = document.createElement("button"); b.type = "button";
+      b.className = "c-cat " + type + (q.type === type ? " on" : "");
+      b.textContent = KO[type]; b.setAttribute("aria-pressed", String(q.type === type));
+      // 드래그(pointer)와 겹치지 않게 pointer 전파 차단 + click으로 분류
+      b.addEventListener("pointerdown", e => e.stopPropagation());
+      b.addEventListener("pointerup", e => e.stopPropagation());
+      b.addEventListener("click", e => { e.stopPropagation(); setType(q.id, q.type === type ? null : type); });
+      bar.appendChild(b);
+    });
+    el.appendChild(bar);
+  }
   if (opts.deletable) {
     const del = document.createElement("button");
     del.className = "c-del"; del.type = "button"; del.textContent = "✕";
@@ -237,6 +253,16 @@ function renderCreate() {
 }
 
 function renderClassify() {
+  // 상단 집계(항상 보임) — 분류 진행 상황
+  const tally = document.getElementById("classify-tally");
+  if (tally) {
+    const by = { fact: 0, infer: 0, imagine: 0, none: 0 };
+    S.questions.forEach(q => by[q.type || "none"]++);
+    tally.textContent = "";
+    [["none", "안 나눔", by.none], ["fact", KO.fact, by.fact], ["infer", KO.infer, by.infer], ["imagine", KO.imagine, by.imagine]].forEach(arr => {
+      const c = document.createElement("span"); c.className = "tc tc-" + arr[0]; c.textContent = arr[1] + " " + arr[2]; tally.appendChild(c);
+    });
+  }
   const unsortedWrap = document.getElementById("classify-unsorted");
   unsortedWrap.textContent = "";
   const h = document.createElement("h3"); h.textContent = "아직 안 나눈 질문";
@@ -248,7 +274,7 @@ function renderClassify() {
     unsortedWrap.appendChild(n);
   } else {
     const box = document.createElement("div"); box.className = "list";
-    unsorted.forEach(q => box.appendChild(makeCard(q, { pickable: true })));
+    unsorted.forEach(q => box.appendChild(makeCard(q, { pickable: true, classify: true })));
     unsortedWrap.appendChild(box);
   }
   const cols = document.getElementById("classify-cols");
@@ -261,7 +287,7 @@ function renderClassify() {
     head.innerHTML = `<span>${KO[type]}</span>`;
     const hint = document.createElement("div"); hint.className = "col-hint"; hint.textContent = HINT[type];
     const body = document.createElement("div"); body.className = "col-body";
-    S.questions.filter(q => q.type === type).forEach(q => body.appendChild(makeCard(q, { pickable: true })));
+    S.questions.filter(q => q.type === type).forEach(q => body.appendChild(makeCard(q, { pickable: true, classify: true })));
     col.append(head, hint, body);
     bindDrop(col, type, "classify");
     cols.appendChild(col);
